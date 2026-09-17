@@ -1,0 +1,6 @@
+import { AppShell } from "@/components/layout/app-shell";
+import { PurchaseForm } from "@/components/purchases/purchase-form";
+import { requirePermission, PERMISSIONS } from "@/server/auth/permissions";
+import { prisma } from "@/server/db/prisma";
+
+export default async function NewPurchasePage() { const user = await requirePermission(PERMISSIONS.purchaseCreate); const [suppliers, medicines] = await Promise.all([prisma.supplier.findMany({ where: { status: "ACTIVE" }, select: { id: true, businessName: true }, orderBy: { businessName: "asc" } }), prisma.medicine.findMany({ where: { active: true }, select: { id: true, name: true, purchasePrice: true, mrp: true, sellingPrice: true, gstPercentage: true }, orderBy: { name: "asc" } })]); return <AppShell user={user}><div className="mx-auto max-w-7xl space-y-6"><div><p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">Purchasing</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">New purchase</h1><p className="mt-2 text-muted-foreground">Receive stock, calculate tax, and update supplier balance.</p></div><PurchaseForm suppliers={suppliers} medicines={medicines} /></div></AppShell>; }

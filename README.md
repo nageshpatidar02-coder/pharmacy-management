@@ -1,36 +1,77 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Medical Management System
 
-## Getting Started
+A modular monolith foundation for a small, single-store medical or pharmacy shop. Business modules are intentionally deferred; the current code establishes routing, authentication, authorization, persistence, validation, and reusable UI architecture.
 
-First, run the development server:
+## Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Next.js 16 App Router and TypeScript
+- Tailwind CSS 4 with shadcn/ui-style local primitives
+- MongoDB with Prisma ORM
+- Zod, React Hook Form, TanStack Table, Lucide, and Recharts
+
+## Getting started
+
+1. Run `npm install`.
+2. Start local MongoDB on `mongodb://127.0.0.1:27017`.
+3. Copy `.env.example` to `.env`.
+4. Run `npm run prisma:generate`.
+5. Apply the Prisma schema with `npm run prisma:push`.
+6. Seed development roles, permissions, and the admin account with `npm run prisma:seed`.
+7. Start the app with `npm run dev`.
+
+The development login hint uses `admin@example.com` and `Admin@12345678`. Change both values before using a shared or production environment.
+
+Without MongoDB, the login form now shows a safe setup error instead of crashing. Start MongoDB locally before trying the development login.
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start the development server |
+| `npm run build` | Create a production build |
+| `npm run start` | Start the production server |
+| `npm run lint` | Run ESLint |
+| `npm run prisma:generate` | Generate the Prisma client |
+| `npm run prisma:push` | Apply the Prisma schema to MongoDB |
+| `npm run prisma:seed` | Seed roles, permissions, settings, and the env-defined admin |
+
+## Architecture
+
+```text
+src/
+├── app/
+│   ├── (auth)/                 # Login and password recovery routes
+│   ├── (dashboard)/            # Protected dashboard routes
+│   ├── api/                    # Reserved for thin REST handlers
+│   ├── layout.tsx
+│   ├── loading.tsx
+│   ├── error.tsx
+│   └── not-found.tsx
+├── components/                 # UI, layout, forms, and shared components
+├── server/
+│   ├── auth/                   # Sessions and permissions
+│   ├── db/                     # Central Prisma client
+│   ├── repositories/           # Database boundaries for future modules
+│   └── services/               # Server-side use cases
+├── lib/
+│   ├── validations/            # Zod schemas
+│   ├── calculations/           # Future server-side calculations
+│   ├── errors/                 # Structured application errors
+│   └── constants/
+├── config/
+├── hooks/
+└── types/
+
+prisma/                         # Schema, migrations, and seed
+public/                         # Static assets
+tests/                          # Unit, integration, and e2e test areas
+docs/                           # Architecture, database, and API docs
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Request flow:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```text
+UI -> route/server action -> validation -> authentication -> authorization -> service -> repository/Prisma -> PostgreSQL
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+No real secrets, localStorage persistence, or fake business records are committed. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DATABASE_DESIGN.md](docs/DATABASE_DESIGN.md), and [docs/API.md](docs/API.md).

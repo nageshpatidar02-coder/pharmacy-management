@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f4f7f7;
+  --foreground: #17333b;
+  --surface: #ffffff;
+  --muted: #edf3f2;
+  --muted-foreground: #668087;
+  --border: #d8e5e3;
+  --primary: #087f78;
+  --primary-foreground: #ffffff;
+  --ring: #56b8ad;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+ .dark {
+    --background: #102326;
+    --foreground: #e8f2f0;
+    --surface: #173238;
+    --muted: #203f45;
+    --muted-foreground: #a1bbb9;
+    --border: #2c5054;
+    --primary: #63c9bb;
+    --primary-foreground: #092d2b;
+    --ring: #80d9cd;
+  }
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), sans-serif;
+  background-image: radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--primary) 8%, transparent), transparent 28rem);
+}
+
+* { border-color: var(--border); }
