@@ -2,10 +2,12 @@ import "server-only";
 
 import { createHash, randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
+import { ObjectId } from "mongodb";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { prisma } from "@/server/db/prisma";
+import { getMongoDatabase } from "@/server/db/mongo";
 
 export const SESSION_COOKIE = "medical_session";
 const SESSION_DURATION_MS = 1000 * 60 * 60 * 8;
@@ -25,9 +27,16 @@ export async function hashPassword(password: string) {
 export async function createSession(userId: string) {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
+  const now = new Date();
 
-  await prisma.session.create({
-    data: { tokenHash: hashToken(token), userId, expiresAt },
+  const database = await getMongoDatabase();
+  await database.collection("Session").insertOne({
+    _id: new ObjectId(),
+    tokenHash: hashToken(token),
+    userId: new ObjectId(userId),
+    expiresAt,
+    createdAt: now,
+    lastSeenAt: now,
   });
 
   const cookieStore = await cookies();
@@ -43,21 +52,36 @@ export async function createSession(userId: string) {
 export async function destroySession() {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
-  if (token) await prisma.session.deleteMany({ where: { tokenHash: hashToken(token) } });
   cookieStore.delete(SESSION_COOKIE);
+
+  if (!token) {
+    return;
+  }
+
+  try {
+    const database = await getMongoDatabase();
+    await database.collection("Session").deleteOne({ tokenHash: hashToken(token) });
+  } catch {
+    // Ignore stale or missing sessions so logout and invalid-session cleanup remain safe.
+  }
+
 }
 
 export async function getCurrentUser() {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
 
-  const session = await prisma.session.findUnique({
-    where: { tokenHash: hashToken(token) },
-    include: { user: { include: { role: { include: { permissions: { include: { permission: true } } } } } } },
-  });
+  let session;
+  try {
+    session = await prisma.session.findUnique({
+      where: { tokenHash: hashToken(token) },
+      include: { user: { include: { role: { include: { permissions: { include: { permission: true } } } } } } },
+    });
+  } catch {
+    return null;
+  }
 
   if (!session || session.expiresAt <= new Date() || session.user.status !== "ACTIVE") {
-    await destroySession();
     return null;
   }
 
@@ -77,7 +101,7 @@ export async function requirePermission(permissionKey: string) {
   if (!isSuperAdmin && !hasPermission) redirect("/forbidden");
   return user;
 }
-
+ 
 export function permissionKeys(user: Awaited<ReturnType<typeof getCurrentUser>>) {
   if (!user) return [];
   if (user.role.name === "SUPER_ADMIN") return ["*"];

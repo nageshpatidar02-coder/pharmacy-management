@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Activity, BarChart3, ClipboardList, LayoutDashboard, Menu, Moon, Package, Pill, Settings, Sun, Truck, Users, X, ShoppingCart, FileBarChart, Layers3 } from "lucide-react";
+import { Activity, BarChart3, LayoutDashboard, Menu, Moon, Package, Pill, Settings, Sun, Truck, Users, X, ShoppingCart, FileBarChart, Layers3 } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { Button } from "@/components/ui/button";

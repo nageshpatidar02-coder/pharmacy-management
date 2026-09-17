@@ -1,8 +1,7 @@
 import "server-only";
 
-import { prisma } from "@/server/db/prisma";
+import { prisma, runMongoTransaction } from "@/server/db/prisma";
 import { purchaseSchema, type PurchaseInput } from "@/lib/validations/purchase";
-import { recordAudit } from "@/server/services/audit.service";
 
 function roundMoney(value: number) { return Math.round((value + Number.EPSILON) * 100) / 100; }
 
@@ -32,7 +31,7 @@ export async function createPurchase(userId: string, input: unknown) {
   const data = purchaseSchema.parse(input);
   const totals = calculatePurchaseTotals(data);
   if (data.paidAmount > totals.grandTotal) throw new Error("Paid amount cannot exceed the purchase total.");
-  return prisma.$transaction(async (tx) => {
+  return runMongoTransaction(async (tx) => {
     const supplier = await tx.supplier.findUnique({ where: { id: data.supplierId } });
     if (!supplier || supplier.status !== "ACTIVE") throw new Error("Supplier is not active.");
     const medicineIds = [...new Set(data.items.map((item) => item.medicineId))];
