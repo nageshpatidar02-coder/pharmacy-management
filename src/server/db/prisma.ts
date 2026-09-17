@@ -35,13 +35,10 @@ export function isReplicaSetTransactionError(error: unknown) {
 }
 
 export async function runMongoTransaction<T>(operation: (tx: PrismaClient) => Promise<T>): Promise<T> {
-  try {
-    return await prisma.$transaction(async (tx) => operation(tx as PrismaClient));
-  } catch (error) {
-    if (isReplicaSetTransactionError(error)) {
-      return await operation(prisma);
-    }
+  const configuredDatabaseUrl = databaseUrl;
+  if (!configuredDatabaseUrl) throw new Error("Missing DATABASE_URL environment variable.");
 
-    throw error;
-  }
+  const supportsTransactions = configuredDatabaseUrl.startsWith("mongodb+srv://") || /(?:^|[?&])replicaSet=/.test(configuredDatabaseUrl);
+  if (!supportsTransactions) return operation(prisma);
+  return prisma.$transaction(async (tx) => operation(tx as PrismaClient));
 }
