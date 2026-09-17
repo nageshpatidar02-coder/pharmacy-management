@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const SESSION_COOKIE = "medical_session";
+const TEMPORARY_SESSION_COOKIE = "medical_temporary_session";
 
 export const config = {
   matcher: [
@@ -26,11 +27,14 @@ export const config = {
     "/login",
     "/forgot-password",
     "/reset-password",
+    "/demo",
   ],
 };
 
 export function proxy(request: NextRequest) {
-  const hasSession = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
+  const hasSession = Boolean(
+    request.cookies.get(SESSION_COOKIE)?.value || request.cookies.get(TEMPORARY_SESSION_COOKIE)?.value,
+  );
   const protectedPaths = [
     "/dashboard",
     "/medicines",

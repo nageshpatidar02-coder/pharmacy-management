@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { createSession } from "@/server/auth/auth";
-import { authenticateUser } from "@/server/services/auth.service";
-import { loginSchema } from "@/lib/validations/auth";
+import { createTemporarySession, isTemporaryAdminCredentials } from "@/server/auth/temporary-auth";
 
 export const runtime = "nodejs";
 
@@ -10,21 +8,19 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    if (!body || typeof body.email !== "string" || typeof body.password !== "string") {
-      return NextResponse.json({ ok: false, error: "Invalid email or password." }, { status: 400 });
+    if (!body || typeof body.username !== "string" || typeof body.password !== "string") {
+      return NextResponse.json({ ok: false, error: "Invalid username or password." }, { status: 400 });
     }
 
-    const parsed = loginSchema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json({ ok: false, error: "Invalid email or password." }, { status: 400 });
+    if (body.username.trim() !== "admin" || body.password.length < 1) {
+      return NextResponse.json({ ok: false, error: "Invalid username or password." }, { status: 401 });
     }
 
-    const user = await authenticateUser(parsed.data.email, parsed.data.password);
-    if (!user) {
-      return NextResponse.json({ ok: false, error: "Invalid email or password." }, { status: 401 });
+    if (!isTemporaryAdminCredentials(body.username.trim(), body.password)) {
+      return NextResponse.json({ ok: false, error: "Invalid username or password." }, { status: 401 });
     }
 
-    await createSession(user.id);
+    await createTemporarySession();
     return NextResponse.json({ ok: true, redirectTo: "/dashboard" });
   } catch (error) {
     console.error("API login failed", {

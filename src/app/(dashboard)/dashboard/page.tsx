@@ -31,6 +31,16 @@ export default async function Home() {
           <Button><ClipboardList className="size-4" /> View activity</Button>
         </section>
 
+        <section className="relative overflow-hidden rounded-xl border bg-surface shadow-sm">
+          <img src="https://images.unsplash.com/photo-1585435557343-3b092031a831?auto=format&fit=crop&w=1400&q=85" alt="Organized pharmacy shelves" className="h-44 w-full object-cover md:h-56" />
+          <div className="absolute inset-0 bg-gradient-to-r from-black/65 via-black/20 to-transparent" />
+          <div className="absolute inset-y-0 left-0 flex max-w-xl flex-col justify-center px-6 text-white md:px-8">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-100">Care-ready operations</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight md:text-3xl">Keep every medicine accounted for.</h2>
+            <p className="mt-2 text-sm text-white/80">Monitor stock, batches, expiry dates and supplier workflows from one calm workspace.</p>
+          </div>
+        </section>
+
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {summaryCards.map(([label, value, detail, Icon]) => (
             <Card key={String(label)}>

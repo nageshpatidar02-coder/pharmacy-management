@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 
 import { prisma } from "@/server/db/prisma";
 import { getMongoDatabase } from "@/server/db/mongo";
+import { clearTemporarySession, hasTemporarySession, temporaryAdminUser } from "@/server/auth/temporary-auth";
 
 export const SESSION_COOKIE = "medical_session";
 const SESSION_DURATION_MS = 1000 * 60 * 60 * 8;
@@ -53,6 +54,7 @@ export async function destroySession() {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   cookieStore.delete(SESSION_COOKIE);
+  await clearTemporarySession();
 
   if (!token) {
     return;
@@ -68,6 +70,8 @@ export async function destroySession() {
 }
 
 export async function getCurrentUser() {
+  if (await hasTemporarySession()) return temporaryAdminUser;
+
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
 
