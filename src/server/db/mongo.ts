@@ -57,11 +57,7 @@ export async function getMongoDatabase(): Promise<Db> {
     globalForMongo.mongoConnection = undefined;
     globalForMongo.mongoDb = undefined;
 
-    try {
-      await client.close();
-    } catch {
-      // Ignore close errors after a failed connection
-    }
+    await client.close().catch(() => undefined);
 
     globalForMongo.mongoClient = undefined;
 
