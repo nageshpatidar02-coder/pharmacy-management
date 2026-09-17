@@ -4,7 +4,7 @@ import { prisma } from "@/server/db/prisma";
 import { medicineSchema, categorySchema, manufacturerSchema, batchSchema } from "@/lib/validations/medicine";
 
 export async function listMedicines(search = "") {
-  return prisma.medicine.findMany({ where: search ? { OR: [{ name: { contains: search, mode: "insensitive" } }, { genericName: { contains: search, mode: "insensitive" } }, { sku: { contains: search, mode: "insensitive" } }] } : undefined, include: { category: true, manufacturer: true, batches: { select: { quantity: true, freeQuantity: true, expiryDate: true } } }, orderBy: { name: "asc" } });
+  return prisma.medicine.findMany({ where: search ? { OR: [{ name: { contains: search, mode: "insensitive" } }, { genericName: { contains: search, mode: "insensitive" } }, { sku: { contains: search, mode: "insensitive" } }, { barcode: { contains: search, mode: "insensitive" } }] } : undefined, include: { category: true, manufacturer: true, batches: { select: { quantity: true, freeQuantity: true, expiryDate: true } } }, orderBy: { name: "asc" } });
 }
 
 export async function createMedicine(input: unknown) { const data = medicineSchema.parse(input); return prisma.medicine.create({ data: { ...data, categoryId: data.categoryId || null, manufacturerId: data.manufacturerId || null, barcode: data.barcode || null } }); }
