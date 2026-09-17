@@ -4,6 +4,8 @@ import { createSession } from "@/server/auth/auth";
 import { authenticateUser } from "@/server/services/auth.service";
 import { loginSchema } from "@/lib/validations/auth";
 
+export const runtime = "nodejs";
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -15,11 +17,6 @@ export async function POST(request: Request) {
     const parsed = loginSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ ok: false, error: "Invalid email or password." }, { status: 400 });
-    }
-
-    if (!process.env.DATABASE_URL) {
-      console.error("Login failed: DATABASE_URL is not configured.");
-      return NextResponse.json({ ok: false, error: "Login service is temporarily unavailable." }, { status: 500 });
     }
 
     const user = await authenticateUser(parsed.data.email, parsed.data.password);
