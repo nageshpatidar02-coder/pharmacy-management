@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Activity, BarChart3, LayoutDashboard, Menu, Moon, Package, Pill, Settings, Sun, Truck, Users, X, ShoppingCart, FileBarChart, Layers3 } from "lucide-react";
+import { Activity, LayoutDashboard, Menu, Moon, Package, Pill, Settings, Sun, Truck, Users, X, ShoppingCart, Layers3 } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { Button } from "@/components/ui/button";
@@ -18,10 +18,7 @@ const navigation = [
   { label: "Inventory", href: "/inventory", icon: Package },
   { label: "Batches", href: "/batches", icon: Layers3 },
   { label: "Purchases", href: "/purchases", icon: ShoppingCart },
-  { label: "Sales", href: "/sales", icon: BarChart3 },
-  { label: "Customers", href: "/customers", icon: Users },
   { label: "Suppliers", href: "/suppliers", icon: Truck },
-  { label: "Reports", href: "/reports", icon: FileBarChart },
 ];
 
 type ShellUser = { name: string; email: string; role: { name: string } };

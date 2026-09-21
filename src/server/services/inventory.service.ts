@@ -1,6 +1,6 @@
 import "server-only";
 
-import { prisma } from "@/server/db/prisma";
+import { prisma, runMongoTransaction } from "@/server/db/prisma";
 import { stockAdjustmentSchema } from "@/lib/validations/medicine";
 
 export async function getInventorySummary() {
@@ -12,11 +12,13 @@ export async function getInventorySummary() {
 
 export async function adjustStock(input: unknown, userId: string) {
   const data = stockAdjustmentSchema.parse(input);
-  const batch = await prisma.batch.findUnique({ where: { id: data.batchId } });
-  if (!batch) throw new Error("Batch not found");
-  const newQuantity = batch.quantity + data.quantityChange;
-  if (newQuantity < 0) throw new Error("Stock cannot become negative");
-  const updated = await prisma.batch.update({ where: { id: batch.id }, data: { quantity: newQuantity } });
-  await prisma.stockLedger.create({ data: { medicineId: batch.medicineId, batchId: batch.id, previousQuantity: batch.quantity, quantityChange: data.quantityChange, newQuantity, reason: data.reason, reference: data.reference || null, userId } });
-  return updated;
+  return runMongoTransaction(async (tx) => {
+    const batch = await tx.batch.findUnique({ where: { id: data.batchId } });
+    if (!batch) throw new Error("Batch not found");
+    const newQuantity = batch.quantity + data.quantityChange;
+    if (newQuantity < 0) throw new Error("Stock cannot become negative");
+    const updated = await tx.batch.update({ where: { id: batch.id }, data: { quantity: newQuantity } });
+    await tx.stockLedger.create({ data: { medicineId: batch.medicineId, batchId: batch.id, previousQuantity: batch.quantity, quantityChange: data.quantityChange, newQuantity, reason: data.reason, reference: data.reference || null, userId: userId === "temporary-admin" ? undefined : userId } });
+    return updated;
+  });
 }

@@ -25,12 +25,26 @@ export function calculatePurchaseTotals(input: PurchaseInput) {
   return { lines, subtotal: roundMoney(subtotal), discount: roundMoney(discount), taxableAmount: roundMoney(taxableAmount), cgst: roundMoney(cgst), sgst: roundMoney(sgst), igst: roundMoney(igst), roundOff: roundMoney(grandTotal - beforeRound), grandTotal: roundMoney(grandTotal), paidAmount: roundMoney(Math.min(input.paidAmount, grandTotal)), balanceAmount: roundMoney(Math.max(grandTotal - input.paidAmount, 0)) };
 }
 
-export async function listPurchases() { return prisma.purchase.findMany({ include: { supplier: true, items: true }, orderBy: { invoiceDate: "desc" } }); }
+export async function listPurchases(filters: { search?: string; supplierId?: string; from?: Date; to?: Date; page?: number; pageSize?: number } = {}) {
+  const page = Math.max(1, filters.page ?? 1);
+  const pageSize = Math.min(100, Math.max(1, filters.pageSize ?? 20));
+  const where = {
+    ...(filters.supplierId ? { supplierId: filters.supplierId } : {}),
+    ...(filters.search ? { invoiceNumber: { contains: filters.search, mode: "insensitive" as const } } : {}),
+    ...(filters.from || filters.to ? { invoiceDate: { ...(filters.from ? { gte: filters.from } : {}), ...(filters.to ? { lte: filters.to } : {}) } } : {}),
+  };
+  const [items, total] = await Promise.all([
+    prisma.purchase.findMany({ where, include: { supplier: true, items: true }, orderBy: { invoiceDate: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
+    prisma.purchase.count({ where }),
+  ]);
+  return { items, total, page, pageSize, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
+}
 
 export async function createPurchase(userId: string, input: unknown) {
   const data = purchaseSchema.parse(input);
   const totals = calculatePurchaseTotals(data);
   if (data.paidAmount > totals.grandTotal) throw new Error("Paid amount cannot exceed the purchase total.");
+  const persistedUserId = userId === "temporary-admin" ? undefined : userId;
   return runMongoTransaction(async (tx) => {
     const supplier = await tx.supplier.findUnique({ where: { id: data.supplierId } });
     if (!supplier || supplier.status !== "ACTIVE") throw new Error("Supplier is not active.");
@@ -45,11 +59,11 @@ export async function createPurchase(userId: string, input: unknown) {
       const nextFree = (batch?.freeQuantity ?? 0) + item.freeQuantity;
       const savedBatch = batch ? await tx.batch.update({ where: { id: batch.id }, data: { manufacturingDate: item.manufacturingDate, expiryDate: item.expiryDate, purchasePrice: item.purchaseRate, mrp: item.mrp, sellingPrice: item.sellingPrice, quantity: nextQuantity, freeQuantity: nextFree } }) : await tx.batch.create({ data: { medicineId: medicine.id, batchNumber: item.batchNumber, manufacturingDate: item.manufacturingDate, expiryDate: item.expiryDate, purchasePrice: item.purchaseRate, mrp: item.mrp, sellingPrice: item.sellingPrice, quantity: item.quantity, freeQuantity: item.freeQuantity } });
       await tx.purchaseItem.create({ data: { purchaseId: purchase.id, medicineId: medicine.id, batchId: savedBatch.id, expiryDate: item.expiryDate, quantity: item.quantity, freeQuantity: item.freeQuantity, purchaseRate: item.purchaseRate, mrp: item.mrp, sellingPrice: item.sellingPrice, discount: totals.lines[index].discount, gstPercentage: item.gstPercentage, lineTotal: totals.lines[index].lineTotal } });
-      await tx.stockLedger.create({ data: { medicineId: medicine.id, batchId: savedBatch.id, previousQuantity: batch?.quantity ?? 0, quantityChange: item.quantity + item.freeQuantity, newQuantity: nextQuantity + nextFree, reason: "PURCHASE", reference: purchase.id, userId } });
+      await tx.stockLedger.create({ data: { medicineId: medicine.id, batchId: savedBatch.id, previousQuantity: batch?.quantity ?? 0, quantityChange: item.quantity + item.freeQuantity, newQuantity: nextQuantity + nextFree, reason: "PURCHASE", reference: purchase.id, userId: persistedUserId } });
     }
     if (totals.paidAmount > 0) await tx.supplierPayment.create({ data: { supplierId: supplier.id, purchaseId: purchase.id, amount: totals.paidAmount, method: data.paymentMethod, reference: data.paymentReference || null } });
     await tx.supplier.update({ where: { id: supplier.id }, data: { outstandingBalance: supplier.outstandingBalance + totals.balanceAmount } });
-    await tx.auditLog.create({ data: { action: "purchase.created", entity: "Purchase", entityId: purchase.id, userId, metadata: { grandTotal: totals.grandTotal } } });
+    await tx.auditLog.create({ data: { action: "purchase.created", entity: "Purchase", entityId: purchase.id, userId: persistedUserId, metadata: { grandTotal: totals.grandTotal } } });
     return purchase;
   });
 }

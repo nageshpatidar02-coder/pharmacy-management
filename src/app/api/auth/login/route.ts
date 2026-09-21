@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { createTemporarySession, isTemporaryAdminCredentials } from "@/server/auth/temporary-auth";
+import { createSession } from "@/server/auth/auth";
+import { authenticateUser } from "@/server/services/auth.service";
 
 export const runtime = "nodejs";
 
@@ -8,24 +9,21 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    if (!body || typeof body.username !== "string" || typeof body.password !== "string") {
-      return NextResponse.json({ ok: false, error: "Invalid username or password." }, { status: 400 });
+    if (!body || typeof body.email !== "string" || typeof body.password !== "string") {
+      return NextResponse.json({ ok: false, error: "Enter your email and password." }, { status: 400 });
     }
 
-    if (body.username.trim() !== "admin" || body.password.length < 1) {
-      return NextResponse.json({ ok: false, error: "Invalid username or password." }, { status: 401 });
+    const user = await authenticateUser(body.email.trim(), body.password);
+    if (!user) {
+      return NextResponse.json({ ok: false, error: "Invalid email or password." }, { status: 401 });
     }
 
-    if (!isTemporaryAdminCredentials(body.username.trim(), body.password)) {
-      return NextResponse.json({ ok: false, error: "Invalid username or password." }, { status: 401 });
-    }
-
-    await createTemporarySession();
+    await createSession(user.id);
     return NextResponse.json({ ok: true, redirectTo: "/dashboard" });
   } catch (error) {
     console.error("API login failed", {
       message: error instanceof Error ? error.message : "Unknown login error",
     });
-    return NextResponse.json({ ok: false, error: "Login service is temporarily unavailable." }, { status: 503 });
+    return NextResponse.json({ ok: false, error: "Database is unavailable. Check DATABASE_URL and restart the development server." }, { status: 503 });
   }
 }

@@ -4,24 +4,27 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AppShell } from "@/components/layout/app-shell";
 import { requirePermission, PERMISSIONS } from "@/server/auth/permissions";
+import { getDashboardSummary } from "@/server/services/dashboard.service";
 
 export default async function Home() {
   const user = await requirePermission(PERMISSIONS.dashboardView);
+  const summary = await getDashboardSummary();
   const summaryCards: Array<[string, string, string, LucideIcon]> = [
-    ["Today's sales", "0", "No sales recorded yet", ReceiptText],
-    ["Today's purchase", "0", "No purchases recorded yet", PackageCheck],
-    ["Today's profit", "0", "No sales recorded yet", Activity],
-    ["Total medicines", "0", "Medicine module not seeded", ShieldCheck],
-    ["Current stock", "0", "No inventory recorded yet", PackageCheck],
-    ["Low stock", "0", "No inventory alerts", Activity],
-    ["Near expiry", "0", "No expiry alerts", ShieldCheck],
-    ["Customer outstanding", "0", "No outstanding balance", ReceiptText],
-    ["Supplier outstanding", "0", "No outstanding balance", ClipboardList],
+    ["Today's sales", "Not configured", "Sales model is not yet available", ReceiptText],
+    ["Today's purchase", summary.todayPurchaseValue.toFixed(2), `${summary.todayPurchaseCount} purchase(s) today`, PackageCheck],
+    ["Today's profit", "Not configured", "Sales model is not yet available", Activity],
+    ["Total medicines", String(summary.medicineCount), "Active medicine records", ShieldCheck],
+    ["Current stock", String(summary.currentStock), `${summary.stockValue.toFixed(2)} purchase value`, PackageCheck],
+    ["Low stock", String(summary.lowStockCount), "Batches at or below minimum", Activity],
+    ["Near expiry", String(summary.nearExpiryCount), "Within the 90-day warning window", ShieldCheck],
+    ["Expired stock", String(summary.expiredCount), "Active batches past expiry", ReceiptText],
+    ["Active suppliers", String(summary.supplierCount), "Supplier records", ClipboardList],
   ];
 
   return (
     <AppShell user={user}>
       <div className="mx-auto max-w-[1440px] space-y-8">
+        {!summary.databaseAvailable && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">Database connection unavailable. Dashboard values are temporary placeholders. Check your MongoDB Atlas connection and DATABASE_URL.</div>}
         <section className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
           <div>
             <p className="mb-2 text-sm font-semibold uppercase tracking-[0.18em] text-primary">Thursday, September 17, 2026</p>
