@@ -18,7 +18,7 @@ export async function adjustStock(input: unknown, userId: string) {
     const newQuantity = batch.quantity + data.quantityChange;
     if (newQuantity < 0) throw new Error("Stock cannot become negative");
     const updated = await tx.batch.update({ where: { id: batch.id }, data: { quantity: newQuantity } });
-    await tx.stockLedger.create({ data: { medicineId: batch.medicineId, batchId: batch.id, previousQuantity: batch.quantity, quantityChange: data.quantityChange, newQuantity, reason: data.reason, reference: data.reference || null, userId: userId === "temporary-admin" ? undefined : userId } });
+    await tx.stockLedger.create({ data: { medicineId: batch.medicineId, batchId: batch.id, previousQuantity: batch.quantity, quantityChange: data.quantityChange, newQuantity, reason: data.reason, reference: data.reference || null, userId } });
     return updated;
   });
 }
