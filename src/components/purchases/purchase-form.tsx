@@ -26,7 +26,6 @@ type PurchaseLine = {
   medicineName?: string;
   category?: MedicineCategory;
   batchNumber: string; 
-  manufacturingDate: string; 
   expiryDate: string; 
   quantity: number; 
   freeQuantity: number; 
@@ -42,7 +41,6 @@ const emptyLine = (): PurchaseLine => ({
   medicineName: "",
   category: "TABLET",
   batchNumber: "", 
-  manufacturingDate: "", 
   expiryDate: "", 
   quantity: 1, 
   freeQuantity: 0, 
@@ -265,7 +263,6 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines }: { suppl
                 <Field label="Selling Price" value={line.sellingPrice} onChange={(value) => updateLine(index, { sellingPrice: Math.max(0, Number(value) || 0) })} type="number" required />
                 <Field label="Discount (Rs)" value={line.discount} onChange={(value) => updateLine(index, { discount: Math.max(0, Number(value) || 0) })} type="number" />
                 <Field label="GST %" value={line.gstPercentage} onChange={(value) => updateLine(index, { gstPercentage: Math.min(100, Math.max(0, Number(value) || 0)) })} type="number" />
-                <Field label="Mfg Date" value={line.manufacturingDate} onChange={(value) => updateLine(index, { manufacturingDate: value })} type="date" required />
                 <Field label="Expiry Date" value={line.expiryDate} onChange={(value) => updateLine(index, { expiryDate: value })} type="date" required />
                 
                 <div className="flex items-end justify-between gap-2 text-sm md:col-span-4 border-t pt-2">
@@ -414,11 +411,56 @@ function SearchableMedicineSelect({
   );
 }
 
-function Field({ label, value, onChange, type = "text", required }: { label: string; value: string | number; onChange: (value: string) => void; type?: string; required?: boolean }) { 
+function Field({
+  id,
+  label,
+  type = "text",
+  step,
+  min,
+  defaultValue,
+  value,
+  onChange,
+  required,
+  error,
+  placeholder,
+  className,
+}: {
+  id?: string;
+  label: string;
+  type?: string;
+  step?: string;
+  min?: string;
+  defaultValue?: string | number;
+  value?: string | number;
+  onChange?: (value: string) => void;
+  required?: boolean;
+  error?: string;
+  placeholder?: string;
+  className?: string;
+}) {
+  // Check karein ki prop controlled hai ya nahi
+  const fieldId = id ?? label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const isControlled = value !== undefined;
+
   return (
-    <label className="text-xs font-medium">
-      {label}
-      <Input className="mt-1 bg-surface" type={type} value={value} onChange={(event) => onChange(event.target.value)} required={required} />
-    </label>
-  ); 
+    <div className="space-y-1.5">
+      <label       htmlFor={fieldId} className="text-xs font-semibold text-foreground">
+        {label}
+      </label>
+      <Input
+        id={fieldId}
+        name={fieldId}
+        type={type}
+        step={step}
+        min={min}
+        {...(isControlled ? { value } : { defaultValue: defaultValue ?? "" })}
+        onChange={(event) => onChange?.(event.target.value)}
+        required={required}
+        placeholder={placeholder}
+        aria-invalid={Boolean(error)}
+        className={`h-10 text-xs ${className ?? ""}`}
+      />
+      {error && <p className="text-xs text-red-600">{error}</p>}
+    </div>
+  );
 }

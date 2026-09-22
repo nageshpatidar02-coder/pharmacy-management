@@ -177,7 +177,7 @@ model Medicine {
   gstPercentage      Float          @default(0)
   prescriptionRequired Boolean      @default(false)
   barcode            String?        @unique
-  sku                String         @unique
+  sku                String?        @unique
   mrp                Float          @default(0)
   purchasePrice      Float          @default(0)
   sellingPrice       Float          @default(0)

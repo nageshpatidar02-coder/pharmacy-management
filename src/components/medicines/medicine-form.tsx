@@ -31,7 +31,7 @@ type MedicineValues = {
   gstPercentage?: number;
   prescriptionRequired?: boolean;
   barcode?: string | null;
-  sku?: string;
+  sku?: string | null;
   mrp?: number;
   purchasePrice?: number;
   sellingPrice?: number;
@@ -39,8 +39,13 @@ type MedicineValues = {
   active?: boolean;
 };
 
-// Common standard GST Rates in Pharma
 const COMMON_GST_RATES = [0, 5, 12, 18, 28];
+
+function normalizeGst(value: unknown, fallback = 12): number {
+  if (value === "" || value === null || value === undefined) return fallback;
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? Math.min(100, Math.max(0, numberValue)) : 12;
+}
 
 export function MedicineForm({
   initial = {},
@@ -54,32 +59,44 @@ export function MedicineForm({
 
   const [sku, setSku] = useState(String(initial.sku ?? ""));
   const [name, setName] = useState(String(initial.name ?? ""));
-  const [dosageForm, setDosageForm] = useState(String(initial.dosageForm ?? ""));
   const [itemType, setItemType] = useState<NonNullable<MedicineValues["itemType"]>>(
     String(initial.itemType ?? "TABLET").toUpperCase() as NonNullable<MedicineValues["itemType"]>
   );
+  
+  // GST State handling fix
   const [gstPercentage, setGstPercentage] = useState<number | "">(
-    initial.gstPercentage == null ? 12 : Number(initial.gstPercentage)
+    normalizeGst(initial.gstPercentage)
   );
 
   useEffect(() => {
     setSku(String(initial.sku ?? ""));
     setName(String(initial.name ?? ""));
-    setDosageForm(String(initial.dosageForm ?? ""));
     setItemType(String(initial.itemType ?? "TABLET").toUpperCase() as NonNullable<MedicineValues["itemType"]>);
-    setGstPercentage(initial.gstPercentage == null ? 12 : Number(initial.gstPercentage));
-  }, [initial]);
+    setGstPercentage(normalizeGst(initial.gstPercentage));
+  }, [initial.id, initial.sku, initial.name, initial.itemType, initial.gstPercentage]);
 
-  // Auto Generate Unique SKU Code based on Medicine Name & Form
+  function buildSku(medicineName: string, formName: string) {
+    const cleanName = medicineName.replace(/[^a-zA-Z0-9]/g, "").substring(0, 4).toUpperCase() || "MED";
+    const cleanForm = (formName || itemType || "TAB").replace(/[^a-zA-Z0-9]/g, "").substring(0, 3).toUpperCase();
+    const randomCode = Math.floor(1000 + Math.random() * 9000);
+    return `${cleanName}-${cleanForm}-${randomCode}`;
+  }
+
   function handleGenerateSku() {
-    if (!name) {
+    const medicineName = name.trim();
+    if (!medicineName) {
       setFieldErrors((prev) => ({ ...prev, name: "Enter medicine name to generate SKU" }));
       return;
     }
-    const cleanName = name.replace(/[^a-zA-Z0-9]/g, "").substring(0, 4).toUpperCase();
-    const cleanForm = (dosageForm || "MED").replace(/[^a-zA-Z0-9]/g, "").substring(0, 3).toUpperCase();
-    const randomCode = Math.floor(100 + Math.random() * 900);
-    setSku(`${cleanName}-${cleanForm}-${randomCode}`);
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      delete next.name;
+      delete next.sku;
+      return next;
+    });
+
+    const generated = buildSku(medicineName, itemType);
+    setSku(generated);
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -89,24 +106,42 @@ export function MedicineForm({
     setFieldErrors({});
 
     const form = new FormData(event.currentTarget);
+    const readText = (field: string) => String(form.get(field) ?? "");
+    const readNumber = (field: string) => {
+      const value = Number(form.get(field));
+      return Number.isFinite(value) ? value : 0;
+    };
+    const medicineName = name.trim();
+
+    if (!medicineName) {
+      setFieldErrors({ name: "Medicine name is required." });
+      setError("Please enter a medicine name.");
+      setSaving(false);
+      return;
+    }
+
+    const finalSku = sku.trim() || buildSku(medicineName, itemType);
+
+    const selectedGst = normalizeGst(gstPercentage, 0);
+
     const payload = {
-      name: String(form.get("name") ?? ""),
-      genericName: String(form.get("genericName") ?? ""),
-      composition: String(form.get("composition") ?? ""),
-      dosageForm: String(form.get("dosageForm") ?? ""),
+      name: medicineName,
+      genericName: readText("genericName"),
+      composition: readText("composition"),
+      dosageForm: "",
       itemType,
-      strength: String(form.get("strength") ?? ""),
-      packSize: String(form.get("packSize") ?? ""),
-      unit: String(form.get("unit") ?? ""),
-      hsnCode: String(form.get("hsnCode") ?? ""),
-      gstPercentage: gstPercentage === "" ? 0 : Number(gstPercentage),
+      strength: readText("strength"),
+      packSize: readText("packSize"),
+      unit: readText("unit"),
+      hsnCode: readText("hsnCode"),
+      gstPercentage: selectedGst,
       prescriptionRequired: form.has("prescriptionRequired"),
-      barcode: String(form.get("barcode") ?? ""),
-      sku: sku,
-      mrp: form.get("mrp") ? Number(form.get("mrp")) : 0,
-      purchasePrice: form.get("purchasePrice") ? Number(form.get("purchasePrice")) : 0,
-      sellingPrice: form.get("sellingPrice") ? Number(form.get("sellingPrice")) : 0,
-      minimumStock: form.get("minimumStock") ? Number(form.get("minimumStock")) : 0,
+      barcode: readText("barcode"),
+      sku: finalSku,
+      mrp: readNumber("mrp"),
+      purchasePrice: readNumber("purchasePrice"),
+      sellingPrice: readNumber("sellingPrice"),
+      minimumStock: readNumber("minimumStock"),
       active: form.has("active") || !initial.id,
     };
 
@@ -159,7 +194,6 @@ export function MedicineForm({
 
   return (
     <form onSubmit={submit} className="mx-auto max-w-6xl space-y-6">
-      {/* Header Info */}
       <div className="flex flex-col gap-1 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
@@ -182,7 +216,16 @@ export function MedicineForm({
             id="name"
             label="Medicine Name *"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value);
+              if (fieldErrors.name) {
+                setFieldErrors((prev) => {
+                  const copy = { ...prev };
+                  delete copy.name;
+                  return copy;
+                });
+              }
+            }}
             required
             error={fieldErrors.name}
             placeholder="e.g. Paracetamol / Crocin"
@@ -201,25 +244,18 @@ export function MedicineForm({
             error={fieldErrors.composition}
             placeholder="e.g. Paracetamol 500mg"
           />
-          <Field
-            id="dosageForm"
-            label="Dosage Form"
-            value={dosageForm}
-            onChange={(e) => setDosageForm(e.target.value)}
-            placeholder="e.g. Tablet, Syrup, Injection"
-          />
           <SelectField
             id="itemType"
             label="Item Type"
             value={itemType}
-            options={["TABLET", "CAPSULE", "SYRUP", "INJECTION", "DROPS", "OINTMENT", "EQUIPMENT", "OTHER"].map((value) => ({ id: value, name: value }))}
-            onChange={(value) => setItemType(value as NonNullable<MedicineValues["itemType"]>)}
+            options={["TABLET", "CAPSULE", "SYRUP", "INJECTION", "DROPS", "OINTMENT", "EQUIPMENT", "OTHER"].map((val) => ({ id: val, name: val }))}
+            onChange={(val) => setItemType(val as NonNullable<MedicineValues["itemType"]>)}
             error={fieldErrors.itemType}
           />
         </div>
       </div>
 
-      {/* 2. Packaging & Identification (SKU, Barcode, HSN) */}
+      {/* 2. Packaging & Identifiers */}
       <div className="rounded-xl border bg-card p-5 shadow-sm space-y-4">
         <h3 className="text-sm font-semibold flex items-center gap-2 border-b pb-2 text-foreground">
           <Barcode className="h-4 w-4 text-primary" /> Packaging & Identifiers
@@ -252,10 +288,9 @@ export function MedicineForm({
             placeholder="e.g. 30049099"
           />
 
-          {/* Dynamic SKU Generator Field */}
           <div className="space-y-1.5">
             <label htmlFor="sku" className="text-xs font-semibold text-foreground">
-              SKU / Item Code *
+              SKU / Item Code (Optional)
             </label>
             <div className="flex gap-1.5">
               <Input
@@ -263,9 +298,8 @@ export function MedicineForm({
                 name="sku"
                 value={sku}
                 onChange={(e) => setSku(e.target.value)}
-                required
                 className="h-10 text-xs font-mono"
-                placeholder="SKU-XXXX"
+                placeholder="Optional SKU / item code"
               />
               <Button
                 type="button"
@@ -291,7 +325,7 @@ export function MedicineForm({
         </div>
       </div>
 
-      {/* 3. Pricing & Taxes */}
+      {/* 3. Pricing & Taxation */}
       <div className="rounded-xl border bg-card p-5 shadow-sm space-y-4">
         <h3 className="text-sm font-semibold flex items-center gap-2 border-b pb-2 text-foreground">
           <DollarSign className="h-4 w-4 text-primary" /> Pricing & Taxation
@@ -328,7 +362,7 @@ export function MedicineForm({
             error={fieldErrors.mrp}
           />
 
-          {/* Quick GST Selector + Custom GST Input */}
+          {/* Fixed GST Percentage Section */}
           <div className="space-y-1.5 md:col-span-4 lg:col-span-1">
             <label htmlFor="gstPercentage" className="text-xs font-semibold text-foreground flex items-center gap-1">
               <Percent className="h-3.5 w-3.5 text-primary" /> GST Percentage (%) *
@@ -339,9 +373,18 @@ export function MedicineForm({
                   <button
                     key={rate}
                     type="button"
-                    onClick={() => setGstPercentage(rate)}
+                    onClick={() => {
+                      setGstPercentage(rate);
+                      if (fieldErrors.gstPercentage) {
+                        setFieldErrors((prev) => {
+                          const copy = { ...prev };
+                          delete copy.gstPercentage;
+                          return copy;
+                        });
+                      }
+                    }}
                     className={`h-7 px-2.5 rounded-md text-xs font-semibold border transition-colors ${
-                      gstPercentage === rate
+                      Number(gstPercentage) === rate
                         ? "bg-primary text-primary-foreground border-primary"
                         : "bg-muted/40 hover:bg-muted text-muted-foreground border-border"
                     }`}
@@ -359,7 +402,10 @@ export function MedicineForm({
                 min="0"
                 max="100"
                 value={gstPercentage}
-                onChange={(e) => setGstPercentage(e.target.value === "" ? "" : Number(e.target.value))}
+                onChange={(e) => {
+                  const val = e.target.value === "" ? "" : Number(e.target.value);
+                  setGstPercentage(val);
+                }}
                 placeholder="Custom GST %"
                 required
                 className={`h-9 text-xs font-mono ${noSpinnerClass}`}
@@ -373,11 +419,22 @@ export function MedicineForm({
       </div>
 
       <div className="rounded-xl border bg-card p-5 shadow-sm">
-        <Field id="minimumStock" label="Minimum Stock Alert Level *" type="number" min="0" className={noSpinnerClass} defaultValue={Number(initial.minimumStock ?? 10)} required error={fieldErrors.minimumStock} />
-        <p className="mt-2 text-xs text-muted-foreground">Batch number, expiry date and stock quantity are added from the purchase bill.</p>
+        <Field
+          id="minimumStock"
+          label="Minimum Stock Alert Level *"
+          type="number"
+          min="0"
+          className={noSpinnerClass}
+          defaultValue={Number(initial.minimumStock ?? 10)}
+          required
+          error={fieldErrors.minimumStock}
+        />
+        <p className="mt-2 text-xs text-muted-foreground">
+          Batch number, expiry date and stock quantity are added from the purchase bill.
+        </p>
       </div>
 
-      {/* Checkboxes / Regulatory Settings */}
+      {/* Checkboxes */}
       <div className="flex flex-wrap gap-6 rounded-xl border bg-muted/20 p-4">
         <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
           <input
@@ -426,7 +483,6 @@ export function MedicineForm({
   );
 }
 
-// Reusable Input Field Component
 function Field({
   id,
   label,
@@ -454,6 +510,9 @@ function Field({
   placeholder?: string;
   className?: string;
 }) {
+  // Check karein ki prop controlled hai ya nahi
+  const isControlled = value !== undefined;
+
   return (
     <div className="space-y-1.5">
       <label htmlFor={id} className="text-xs font-semibold text-foreground">
@@ -465,7 +524,7 @@ function Field({
         type={type}
         step={step}
         min={min}
-        defaultValue={defaultValue}
+        {...(isControlled ? { value } : { defaultValue: defaultValue ?? "" })}
         onChange={onChange}
         required={required}
         placeholder={placeholder}
@@ -477,7 +536,6 @@ function Field({
   );
 }
 
-// Reusable Select Field Component
 function SelectField({
   id,
   label,

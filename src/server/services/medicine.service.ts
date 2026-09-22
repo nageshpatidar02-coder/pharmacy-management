@@ -18,7 +18,7 @@ function ensureObjectId(id: string) {
 
 function medicineData(input: unknown) {
   const data = medicineSchema.parse(input);
-  return { ...data, categoryId: data.categoryId || null, manufacturerId: data.manufacturerId || null, barcode: data.barcode || null };
+  return { ...data, categoryId: data.categoryId || null, manufacturerId: data.manufacturerId || null, barcode: data.barcode || null, sku: data.sku?.trim() || null };
 }
 
 type MedicineData = ReturnType<typeof medicineData>;
@@ -43,8 +43,10 @@ function persistedMedicineData(data: MedicineData): PersistedMedicineData {
 export async function createMedicine(input: unknown, userId?: string) {
   const data = medicineData(input);
   await validateReferences(data);
-  const duplicateSku = await prisma.medicine.findFirst({ where: { sku: data.sku }, select: { id: true } });
-  if (duplicateSku) throw new Error("SKU is already in use.");
+  if (data.sku) {
+    const duplicateSku = await prisma.medicine.findFirst({ where: { sku: data.sku }, select: { id: true } });
+    if (duplicateSku) throw new Error("SKU is already in use.");
+  }
   if (data.barcode) {
     const duplicateBarcode = await prisma.medicine.findFirst({ where: { barcode: data.barcode }, select: { id: true } });
     if (duplicateBarcode) throw new Error("Barcode is already in use.");
@@ -73,8 +75,10 @@ export async function updateMedicine(id: string, input: unknown, userId?: string
   const existing = await prisma.medicine.findUnique({ where: { id } });
   if (!existing) throw new Error("Medicine not found.");
 
-  const duplicateSku = await prisma.medicine.findFirst({ where: { sku: data.sku, NOT: { id } }, select: { id: true } });
-  if (duplicateSku) throw new Error("SKU is already in use.");
+  if (data.sku) {
+    const duplicateSku = await prisma.medicine.findFirst({ where: { sku: data.sku, NOT: { id } }, select: { id: true } });
+    if (duplicateSku) throw new Error("SKU is already in use.");
+  }
   if (data.barcode) {
     const duplicateBarcode = await prisma.medicine.findFirst({ where: { barcode: data.barcode, NOT: { id } }, select: { id: true } });
     if (duplicateBarcode) throw new Error("Barcode is already in use.");

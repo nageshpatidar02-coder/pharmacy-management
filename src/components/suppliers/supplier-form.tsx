@@ -214,25 +214,36 @@ function Field({
   type = "text",
   step,
   min,
-  inputMode,
   defaultValue,
+  value,
+  onChange,
   required,
+  error,
   placeholder,
+  inputMode,
+  className,
 }: {
   id: string;
   label: string;
   type?: string;
   step?: string;
   min?: string;
-  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
-  defaultValue?: string;
+  defaultValue?: string | number;
+  value?: string | number;
+  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   required?: boolean;
+  error?: string;
   placeholder?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  className?: string;
 }) {
+  // Check karein ki prop controlled hai ya nahi
+  const isControlled = value !== undefined;
+
   return (
-    <div>
-      <label className="mb-1.5 block text-xs font-medium" htmlFor={id}>
-        {label} {required && <span className="text-destructive">*</span>}
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="text-xs font-semibold text-foreground">
+        {label}
       </label>
       <Input
         id={id}
@@ -240,11 +251,15 @@ function Field({
         type={type}
         step={step}
         min={min}
-        inputMode={inputMode}
-        defaultValue={defaultValue}
+        {...(isControlled ? { value } : { defaultValue: defaultValue ?? "" })}
+        onChange={onChange}
         required={required}
         placeholder={placeholder}
+        inputMode={inputMode}
+        aria-invalid={Boolean(error)}
+        className={`h-10 text-xs ${className ?? ""}`}
       />
+      {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   );
 }
