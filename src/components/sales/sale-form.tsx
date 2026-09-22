@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { saleSchema } from "@/lib/validations/sale";
 import { Plus, Trash2, UserPlus, ShoppingBag, Receipt, AlertCircle, RefreshCw } from "lucide-react";
+import { unitsPerStrip } from "@/lib/stock";
 
 type Customer = { id: string; name: string; mobile?: string | null };
 type Batch = {
@@ -58,9 +59,23 @@ const emptyLine = (): Line => ({
 });
 
 function parseUnitsInStrip(packSize?: string | number | null) {
-  if (typeof packSize === "number") return Math.max(1, packSize);
-  const match = packSize?.match(/\d+/);
-  return match ? Math.max(1, Number(match[0])) : 1;
+  return unitsPerStrip(packSize);
+}
+
+export function calculateSaleQuantity(
+  itemType: string,
+  sellMode: Line["sellMode"],
+  strips: number,
+  loose: number,
+  quantity: number,
+  packSize?: string | number | null,
+) {
+  const isTablet = itemType === "TABLET" || itemType === "CAPSULE";
+  if (!isTablet) return Math.max(0, Number(quantity) || 0);
+  const perStrip = unitsPerStrip(packSize);
+  if (sellMode === "LOOSE_TABLET") return Math.max(0, Number(loose) || 0);
+  const stripUnits = Math.max(0, Number(strips) || 0) * perStrip;
+  return sellMode === "BOTH" ? stripUnits + Math.max(0, Number(loose) || 0) : stripUnits;
 }
 
 function generateInvoiceNo(isWalkIn: boolean) {
@@ -116,18 +131,8 @@ export function SaleForm({ customers, medicines }: { customers: Customer[]; medi
         let effectiveSellingPrice = updated.stripPrice;
 
         if (isTablet) {
-          if (updated.sellMode === "LOOSE_TABLET") {
-            calculatedQty = updated.loose || 0;
-            effectiveSellingPrice = updated.perUnitPrice;
-          } else if (updated.sellMode === "BOTH") {
-            // Full Strip + Loose Tablets Combine
-            calculatedQty = (updated.strips || 0) * (updated.unitsPerStrip || 1) + (updated.loose || 0);
-            effectiveSellingPrice = updated.stripPrice;
-          } else {
-            // FULL_STRIP mode
-            calculatedQty = (updated.strips || 0) * (updated.unitsPerStrip || 1);
-            effectiveSellingPrice = updated.stripPrice;
-          }
+          calculatedQty = calculateSaleQuantity(updated.itemType, updated.sellMode, updated.strips, updated.loose, updated.quantity, updated.unitsPerStrip);
+          effectiveSellingPrice = updated.sellMode === "LOOSE_TABLET" ? updated.perUnitPrice : updated.stripPrice;
         } else {
           // Non-Tablets (Syrup, Injection, Drops, etc.)
           calculatedQty = updated.quantity || 1;
@@ -266,7 +271,7 @@ export function SaleForm({ customers, medicines }: { customers: Customer[]; medi
           strips: line.strips,
           loose: line.loose,
           quantity: line.quantity,
-          sellingPrice: unitRate,
+          sellingPrice: isTablet ? Number((unitRate / (line.unitsPerStrip || 1)).toFixed(2)) : unitRate,
           discount: line.discount,
         };
       }),

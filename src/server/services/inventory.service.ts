@@ -3,8 +3,9 @@ import "server-only";
 import { prisma, runMongoTransaction } from "@/server/db/prisma";
 import { stockAdjustmentSchema } from "@/lib/validations/medicine";
 
-export async function getInventorySummary() {
-  const [batches, settings] = await Promise.all([prisma.batch.findMany({ include: { medicine: true }, orderBy: { expiryDate: "asc" } }), prisma.pharmacySettings.findUnique({ where: { key: "singleton" } })]);
+export async function getInventorySummary(search = "") {
+  const term = search.trim();
+  const [batches, settings] = await Promise.all([prisma.batch.findMany({ where: term ? { OR: [{ batchNumber: { contains: term, mode: "insensitive" } }, { medicine: { name: { contains: term, mode: "insensitive" } } }, { medicine: { genericName: { contains: term, mode: "insensitive" } } }] } : undefined, include: { medicine: true }, orderBy: { expiryDate: "asc" } }), prisma.pharmacySettings.findUnique({ where: { key: "singleton" } })]);
   const threshold = settings?.expiryWarningDays ?? 90;
   const now = new Date(); const warningDate = new Date(now.getTime() + threshold * 86400000);
   return { batches, threshold, totalStock: batches.reduce((sum, batch) => sum + batch.quantity + batch.freeQuantity, 0), stockValue: batches.reduce((sum, batch) => sum + batch.quantity * batch.purchasePrice, 0), lowStock: batches.filter((batch) => batch.quantity + batch.freeQuantity <= batch.medicine.minimumStock), expired: batches.filter((batch) => batch.expiryDate < now), nearExpiry: batches.filter((batch) => batch.expiryDate >= now && batch.expiryDate <= warningDate) };

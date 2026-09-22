@@ -6,7 +6,10 @@ import { prisma, runMongoTransaction } from "@/server/db/prisma";
 import { medicineSchema, categorySchema, manufacturerSchema, batchSchema } from "@/lib/validations/medicine";
 
 export async function listMedicines(search = "") {
-  return prisma.medicine.findMany({ where: search ? { OR: [{ name: { contains: search, mode: "insensitive" } }, { genericName: { contains: search, mode: "insensitive" } }, { sku: { contains: search, mode: "insensitive" } }, { barcode: { contains: search, mode: "insensitive" } }] } : undefined, include: { category: true, manufacturer: true, batches: { select: { quantity: true, freeQuantity: true, expiryDate: true } } }, orderBy: { name: "asc" } });
+  const itemTypes = ["TABLET", "CAPSULE", "SYRUP", "INJECTION", "DROPS", "OINTMENT", "EQUIPMENT", "OTHER"] as const;
+  const normalized = search.trim().toUpperCase();
+  const typeFilter = itemTypes.includes(normalized as (typeof itemTypes)[number]) ? [{ itemType: { equals: normalized as (typeof itemTypes)[number] } }] : [];
+  return prisma.medicine.findMany({ where: search ? { OR: [{ name: { contains: search, mode: "insensitive" } }, { genericName: { contains: search, mode: "insensitive" } }, { sku: { contains: search, mode: "insensitive" } }, { barcode: { contains: search, mode: "insensitive" } }, ...typeFilter, { category: { name: { contains: search, mode: "insensitive" } } }, { manufacturer: { name: { contains: search, mode: "insensitive" } } }] } : undefined, include: { category: true, manufacturer: true, batches: { select: { quantity: true, freeQuantity: true, expiryDate: true } } }, orderBy: { name: "asc" } });
 }
 
 function ensureObjectId(id: string) {
@@ -86,12 +89,14 @@ export async function updateMedicine(id: string, input: unknown, userId?: string
     const updated = await tx.medicine.update({ where: { id }, data });
     if (rawData.batchNumber && rawData.expiryDate) {
       const expiry = new Date(rawData.expiryDate);
-      if (Number.isNaN(expiry.getTime()) || expiry <= new Date()) {
-        throw new Error("Batch expiry must be a future date.");
-      }
+      if (Number.isNaN(expiry.getTime())) throw new Error("Enter a valid batch expiry date.");
       const currentBatch = await tx.batch.findFirst({
         where: { medicineId: id, batchNumber: rawData.batchNumber },
       });
+      const expiryChanged = !currentBatch || currentBatch.expiryDate.getTime() !== expiry.getTime();
+      if (expiryChanged && expiry <= new Date()) {
+        throw new Error("Batch expiry must be a future date when it is changed.");
+      }
       const nextQuantity = currentBatch ? Math.max(currentBatch.quantity, openingQuantity) : openingQuantity;
       const savedBatch = currentBatch
         ? await tx.batch.update({
@@ -147,7 +152,28 @@ export async function updateMedicine(id: string, input: unknown, userId?: string
     return updated;
   });
 }
-export async function listCategories() { return prisma.category.findMany({ where: { active: true }, orderBy: { name: "asc" } }); }
+
+export async function deleteMedicine(id: string) {
+  ensureObjectId(id);
+  return runMongoTransaction(async (tx) => {
+    const medicine = await tx.medicine.findUnique({ where: { id }, select: { id: true } });
+    if (!medicine) throw new Error("Medicine not found.");
+    const batches = await tx.batch.findMany({ where: { medicineId: id }, select: { id: true } });
+    const batchIds = batches.map((batch) => batch.id);
+    if (batchIds.length) {
+      await tx.stockLedger.deleteMany({ where: { batchId: { in: batchIds } } });
+      await tx.saleItem.deleteMany({ where: { batchId: { in: batchIds } } });
+      await tx.purchaseItem.deleteMany({ where: { batchId: { in: batchIds } } });
+      await tx.batch.deleteMany({ where: { id: { in: batchIds } } });
+    }
+    await tx.stockLedger.deleteMany({ where: { medicineId: id } });
+    await tx.saleItem.deleteMany({ where: { medicineId: id } });
+    await tx.purchaseItem.deleteMany({ where: { medicineId: id } });
+    await tx.medicine.delete({ where: { id } });
+    return { id };
+  });
+}
+export async function listCategories() { return prisma.category.findMany({ where:  { active: true }, orderBy: { name: "asc" } }); }
 export async function listManufacturers() { return prisma.manufacturer.findMany({ where: { active: true }, orderBy: { name: "asc" } }); }
 export async function listBatches() { return prisma.batch.findMany({ include: { medicine: true }, orderBy: { expiryDate: "asc" } }); }
 export { categorySchema, manufacturerSchema, batchSchema };

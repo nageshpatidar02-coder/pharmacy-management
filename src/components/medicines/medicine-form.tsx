@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,6 @@ import {
   Pill,
   Tag,
   DollarSign,
-  Package,
   Barcode,
   Sparkles,
   AlertCircle,
@@ -23,8 +22,6 @@ type MedicineValues = {
   name?: string;
   genericName?: string | null;
   composition?: string | null;
-  categoryId?: string | null;
-  manufacturerId?: string | null;
   dosageForm?: string | null;
   itemType?: "TABLET" | "CAPSULE" | "SYRUP" | "INJECTION" | "DROPS" | "OINTMENT" | "EQUIPMENT" | "OTHER";
   strength?: string | null;
@@ -40,21 +37,14 @@ type MedicineValues = {
   sellingPrice?: number;
   minimumStock?: number;
   active?: boolean;
-  batchNumber?: string;
-  expiryDate?: string;
-  initialQuantity?: number;
 };
 
 // Common standard GST Rates in Pharma
 const COMMON_GST_RATES = [0, 5, 12, 18, 28];
 
 export function MedicineForm({
-  categories,
-  manufacturers,
   initial = {},
 }: {
-  categories: Option[];
-  manufacturers: Option[];
   initial?: MedicineValues;
 }) {
   const router = useRouter();
@@ -62,13 +52,23 @@ export function MedicineForm({
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  const [sku, setSku] = useState(initial.sku ?? "");
-  const [name, setName] = useState(initial.name ?? "");
-  const [dosageForm, setDosageForm] = useState(initial.dosageForm ?? "");
-  const [itemType, setItemType] = useState<NonNullable<MedicineValues["itemType"]>>(initial.itemType ?? "TABLET");
-  const [gstPercentage, setGstPercentage] = useState<number | "">(
-    initial.gstPercentage ?? 12
+  const [sku, setSku] = useState(String(initial.sku ?? ""));
+  const [name, setName] = useState(String(initial.name ?? ""));
+  const [dosageForm, setDosageForm] = useState(String(initial.dosageForm ?? ""));
+  const [itemType, setItemType] = useState<NonNullable<MedicineValues["itemType"]>>(
+    String(initial.itemType ?? "TABLET").toUpperCase() as NonNullable<MedicineValues["itemType"]>
   );
+  const [gstPercentage, setGstPercentage] = useState<number | "">(
+    initial.gstPercentage == null ? 12 : Number(initial.gstPercentage)
+  );
+
+  useEffect(() => {
+    setSku(String(initial.sku ?? ""));
+    setName(String(initial.name ?? ""));
+    setDosageForm(String(initial.dosageForm ?? ""));
+    setItemType(String(initial.itemType ?? "TABLET").toUpperCase() as NonNullable<MedicineValues["itemType"]>);
+    setGstPercentage(initial.gstPercentage == null ? 12 : Number(initial.gstPercentage));
+  }, [initial]);
 
   // Auto Generate Unique SKU Code based on Medicine Name & Form
   function handleGenerateSku() {
@@ -93,8 +93,6 @@ export function MedicineForm({
       name: String(form.get("name") ?? ""),
       genericName: String(form.get("genericName") ?? ""),
       composition: String(form.get("composition") ?? ""),
-      categoryId: String(form.get("categoryId") ?? ""),
-      manufacturerId: String(form.get("manufacturerId") ?? ""),
       dosageForm: String(form.get("dosageForm") ?? ""),
       itemType,
       strength: String(form.get("strength") ?? ""),
@@ -109,11 +107,6 @@ export function MedicineForm({
       purchasePrice: form.get("purchasePrice") ? Number(form.get("purchasePrice")) : 0,
       sellingPrice: form.get("sellingPrice") ? Number(form.get("sellingPrice")) : 0,
       minimumStock: form.get("minimumStock") ? Number(form.get("minimumStock")) : 0,
-      // Stock & Batch Details
-      quantity: form.get("initialQuantity") ? Number(form.get("initialQuantity")) : 0,
-      initialQuantity: form.get("initialQuantity") ? Number(form.get("initialQuantity")) : 0,
-      batchNumber: String(form.get("batchNumber") ?? ""),
-      expiryDate: String(form.get("expiryDate") ?? ""),
       active: form.has("active") || !initial.id,
     };
 
@@ -141,6 +134,13 @@ export function MedicineForm({
       const result = await response.json().catch(() => ({}));
 
       if (!response.ok) {
+        if (result.fields && typeof result.fields === "object") {
+          const nextErrors: Record<string, string> = {};
+          for (const [field, messages] of Object.entries(result.fields as Record<string, unknown>)) {
+            if (Array.isArray(messages) && messages[0]) nextErrors[field] = String(messages[0]);
+          }
+          setFieldErrors(nextErrors);
+        }
         setError(result.error ?? "Unable to save medicine.");
         return;
       }
@@ -190,30 +190,16 @@ export function MedicineForm({
           <Field
             id="genericName"
             label="Generic Name"
-            defaultValue={initial.genericName ?? ""}
+            defaultValue={String(initial.genericName ?? "")}
             error={fieldErrors.genericName}
             placeholder="e.g. Acetaminophen"
           />
           <Field
             id="composition"
             label="Salt / Composition"
-            defaultValue={initial.composition ?? ""}
+            defaultValue={String(initial.composition ?? "")}
             error={fieldErrors.composition}
             placeholder="e.g. Paracetamol 500mg"
-          />
-          <SelectField
-            id="categoryId"
-            label="Category"
-            value={initial.categoryId ?? ""}
-            options={categories}
-            error={fieldErrors.categoryId}
-          />
-          <SelectField
-            id="manufacturerId"
-            label="Manufacturer / Brand"
-            value={initial.manufacturerId ?? ""}
-            options={manufacturers}
-            error={fieldErrors.manufacturerId}
           />
           <Field
             id="dosageForm"
@@ -242,19 +228,19 @@ export function MedicineForm({
           <Field
             id="strength"
             label="Strength"
-            defaultValue={initial.strength ?? ""}
+            defaultValue={String(initial.strength ?? "")}
             placeholder="e.g. 500 mg, 10 ml"
           />
           <Field
             id="packSize"
             label="Pack Size"
-            defaultValue={initial.packSize ?? ""}
+            defaultValue={String(initial.packSize ?? "")}
             placeholder="e.g. 10 Tablets / Strip"
           />
           <Field
             id="unit"
             label="Unit *"
-            defaultValue={initial.unit ?? "strip"}
+            defaultValue={String(initial.unit ?? "strip")}
             required
             error={fieldErrors.unit}
             placeholder="e.g. strip, bottle, box"
@@ -262,7 +248,7 @@ export function MedicineForm({
           <Field
             id="hsnCode"
             label="HSN Code"
-            defaultValue={initial.hsnCode ?? ""}
+            defaultValue={String(initial.hsnCode ?? "")}
             placeholder="e.g. 30049099"
           />
 
@@ -298,7 +284,7 @@ export function MedicineForm({
           <Field
             id="barcode"
             label="Barcode / EAN"
-            defaultValue={initial.barcode ?? ""}
+            defaultValue={String(initial.barcode ?? "")}
             error={fieldErrors.barcode}
             placeholder="Scan or enter barcode"
           />
@@ -317,7 +303,7 @@ export function MedicineForm({
             type="number"
             step="0.01"
             className={noSpinnerClass}
-            defaultValue={initial.purchasePrice ?? 0}
+            defaultValue={Number(initial.purchasePrice ?? 0)}
             required
             error={fieldErrors.purchasePrice}
           />
@@ -327,7 +313,7 @@ export function MedicineForm({
             type="number"
             step="0.01"
             className={noSpinnerClass}
-            defaultValue={initial.sellingPrice ?? 0}
+            defaultValue={Number(initial.sellingPrice ?? 0)}
             required
             error={fieldErrors.sellingPrice}
           />
@@ -337,7 +323,7 @@ export function MedicineForm({
             type="number"
             step="0.01"
             className={noSpinnerClass}
-            defaultValue={initial.mrp ?? 0}
+            defaultValue={Number(initial.mrp ?? 0)}
             required
             error={fieldErrors.mrp}
           />
@@ -386,46 +372,9 @@ export function MedicineForm({
         </div>
       </div>
 
-      {/* 4. Initial Stock Quantity & Batch Details */}
-      <div className="rounded-xl border bg-card p-5 shadow-sm space-y-4">
-        <h3 className="text-sm font-semibold flex items-center gap-2 border-b pb-2 text-foreground">
-          <Package className="h-4 w-4 text-primary" /> Stock & Initial Batch Details
-        </h3>
-        <div className="grid gap-4 md:grid-cols-4">
-          <Field
-            id="initialQuantity"
-            label="Initial Stock Quantity (Pcs/Strips) *"
-            type="number"
-            min="0"
-            className={noSpinnerClass}
-            defaultValue={initial.initialQuantity ?? 0}
-            required
-            placeholder="e.g. 50"
-            error={fieldErrors.quantity || fieldErrors.initialQuantity}
-          />
-          <Field
-            id="minimumStock"
-            label="Minimum Stock Alert Level *"
-            type="number"
-            min="0"
-            className={noSpinnerClass}
-            defaultValue={initial.minimumStock ?? 10}
-            required
-            error={fieldErrors.minimumStock}
-          />
-          <Field
-            id="batchNumber"
-            label="Initial Batch No."
-            defaultValue={initial.batchNumber ?? ""}
-            placeholder="e.g. BATCH-001"
-          />
-          <Field
-            id="expiryDate"
-            label="Batch Expiry Date"
-            type="date"
-            defaultValue={initial.expiryDate ?? ""}
-          />
-        </div>
+      <div className="rounded-xl border bg-card p-5 shadow-sm">
+        <Field id="minimumStock" label="Minimum Stock Alert Level *" type="number" min="0" className={noSpinnerClass} defaultValue={Number(initial.minimumStock ?? 10)} required error={fieldErrors.minimumStock} />
+        <p className="mt-2 text-xs text-muted-foreground">Batch number, expiry date and stock quantity are added from the purchase bill.</p>
       </div>
 
       {/* Checkboxes / Regulatory Settings */}

@@ -269,7 +269,11 @@ model Supplier {
   email           String?
   address         String?
   gstin           String?
+  dlNumber        String?
   paymentTerms    String?
+  city            String?
+  state           String?
+  creditLimit     Float          @default(0)
   openingBalance  Float          @default(0)
   outstandingBalance Float       @default(0)
   status          SupplierStatus @default(ACTIVE)

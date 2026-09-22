@@ -1,6 +1,7 @@
 import "server-only";
 import { runMongoTransaction } from "@/server/db/prisma";
 import { saleSchema } from "@/lib/validations/sale";
+function unitsPerPack(packSize: string | null | undefined) { const match = packSize?.match(/\d+/); return match ? Math.max(1, Number(match[0])) : 1; }
 export async function createSale(input: unknown) {
   const data = saleSchema.parse(input);
   return runMongoTransaction(async (tx) => {
@@ -21,7 +22,8 @@ export async function createSale(input: unknown) {
       const lineTotal = Math.max(item.quantity * item.sellingPrice - item.discount, 0);
       subtotal += item.quantity * item.sellingPrice;
       discount += item.discount;
-      costAmount += item.quantity * batch.purchasePrice;
+      const packMultiplier = medicine.itemType === "TABLET" || medicine.itemType === "CAPSULE" ? unitsPerPack(medicine.packSize) : 1;
+      costAmount += item.quantity * (batch.purchasePrice / packMultiplier);
       rows.push({ item, batch, lineTotal, nextQuantity: batch.quantity - regularUsed, nextFreeQuantity: batch.freeQuantity - freeUsed });
     }
     const grandTotal = Math.round(Math.max(subtotal - discount, 0));

@@ -28,12 +28,17 @@ export function calculatePurchaseTotals(input: PurchaseInput) {
   return { lines, subtotal: roundMoney(subtotal), discount: roundMoney(discount), taxableAmount: roundMoney(Math.max(taxableAmount - billDiscount, 0)), cgst: roundMoney(cgst), sgst: roundMoney(sgst), igst: roundMoney(igst), roundOff: roundMoney(grandTotal - beforeRound), grandTotal: roundMoney(grandTotal), paidAmount: roundMoney(Math.min(input.paidAmount, grandTotal)), balanceAmount: roundMoney(Math.max(grandTotal - input.paidAmount, 0)) };
 }
 
+function unitsPerPack(packSize: string | null | undefined) {
+  const match = packSize?.match(/\d+/);
+  return match ? Math.max(1, Number(match[0])) : 1;
+}
+
 export async function listPurchases(filters: { search?: string; supplierId?: string; from?: Date; to?: Date; page?: number; pageSize?: number } = {}) {
   const page = Math.max(1, filters.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, filters.pageSize ?? 20));
   const where = {
     ...(filters.supplierId ? { supplierId: filters.supplierId } : {}),
-    ...(filters.search ? { invoiceNumber: { contains: filters.search, mode: "insensitive" as const } } : {}),
+    ...(filters.search ? { OR: [{ invoiceNumber: { contains: filters.search, mode: "insensitive" as const } }, { supplier: { businessName: { contains: filters.search, mode: "insensitive" as const } } }, { items: { some: { medicine: { name: { contains: filters.search, mode: "insensitive" as const } } } } }] } : {}),
     ...(filters.from || filters.to ? { invoiceDate: { ...(filters.from ? { gte: filters.from } : {}), ...(filters.to ? { lte: filters.to } : {}) } } : {}),
   };
   const [items, total] = await Promise.all([
@@ -57,16 +62,36 @@ export async function createPurchase(userId: string, input: unknown) {
     const purchase = await tx.purchase.create({ data: { supplierId: data.supplierId, invoiceNumber: data.invoiceNumber, invoiceDate: data.invoiceDate, dueDate: data.dueDate, subtotal: totals.subtotal, discount: totals.discount, taxableAmount: totals.taxableAmount, cgst: totals.cgst, sgst: totals.sgst, igst: totals.igst, roundOff: totals.roundOff, grandTotal: totals.grandTotal, paidAmount: totals.paidAmount, balanceAmount: totals.balanceAmount } });
     for (const [index, item] of data.items.entries()) {
       const medicine = medicines.find((entry) => entry.id === item.medicineId)!;
+      const packMultiplier = medicine.itemType === "TABLET" || medicine.itemType === "CAPSULE" ? unitsPerPack(medicine.packSize) : 1;
+      const stockQuantity = item.quantity * packMultiplier;
+      const stockFreeQuantity = item.freeQuantity * packMultiplier;
       const batch = await tx.batch.findFirst({ where: { medicineId: item.medicineId, batchNumber: item.batchNumber } });
-      const nextQuantity = (batch?.quantity ?? 0) + item.quantity;
-      const nextFree = (batch?.freeQuantity ?? 0) + item.freeQuantity;
-      const savedBatch = batch ? await tx.batch.update({ where: { id: batch.id }, data: { manufacturingDate: item.manufacturingDate, expiryDate: item.expiryDate, purchasePrice: item.purchaseRate, mrp: item.mrp, sellingPrice: item.sellingPrice, quantity: nextQuantity, freeQuantity: nextFree } }) : await tx.batch.create({ data: { medicineId: medicine.id, batchNumber: item.batchNumber, manufacturingDate: item.manufacturingDate, expiryDate: item.expiryDate, purchasePrice: item.purchaseRate, mrp: item.mrp, sellingPrice: item.sellingPrice, quantity: item.quantity, freeQuantity: item.freeQuantity } });
+      const nextQuantity = (batch?.quantity ?? 0) + stockQuantity;
+      const nextFree = (batch?.freeQuantity ?? 0) + stockFreeQuantity;
+      const savedBatch = batch ? await tx.batch.update({ where: { id: batch.id }, data: { manufacturingDate: item.manufacturingDate, expiryDate: item.expiryDate, purchasePrice: item.purchaseRate, mrp: item.mrp, sellingPrice: item.sellingPrice, quantity: nextQuantity, freeQuantity: nextFree } }) : await tx.batch.create({ data: { medicineId: medicine.id, batchNumber: item.batchNumber, manufacturingDate: item.manufacturingDate, expiryDate: item.expiryDate, purchasePrice: item.purchaseRate, mrp: item.mrp, sellingPrice: item.sellingPrice, quantity: stockQuantity, freeQuantity: stockFreeQuantity } });
       await tx.purchaseItem.create({ data: { purchaseId: purchase.id, medicineId: medicine.id, batchId: savedBatch.id, expiryDate: item.expiryDate, quantity: item.quantity, freeQuantity: item.freeQuantity, purchaseRate: item.purchaseRate, mrp: item.mrp, sellingPrice: item.sellingPrice, discount: totals.lines[index].discount, gstPercentage: item.gstPercentage, lineTotal: totals.lines[index].lineTotal } });
-      await tx.stockLedger.create({ data: { medicineId: medicine.id, batchId: savedBatch.id, previousQuantity: batch?.quantity ?? 0, quantityChange: item.quantity + item.freeQuantity, newQuantity: nextQuantity + nextFree, reason: "PURCHASE", reference: purchase.id, userId: persistedUserId } });
+      await tx.stockLedger.create({ data: { medicineId: medicine.id, batchId: savedBatch.id, previousQuantity: batch?.quantity ?? 0, quantityChange: stockQuantity + stockFreeQuantity, newQuantity: nextQuantity + nextFree, reason: "PURCHASE", reference: purchase.id, userId: persistedUserId } });
     }
+
     if (totals.paidAmount > 0) await tx.supplierPayment.create({ data: { supplierId: supplier.id, purchaseId: purchase.id, amount: totals.paidAmount, method: data.paymentMethod, reference: data.paymentReference || null } });
     await tx.supplier.update({ where: { id: supplier.id }, data: { outstandingBalance: supplier.outstandingBalance + totals.balanceAmount } });
     await tx.auditLog.create({ data: { action: "purchase.created", entity: "Purchase", entityId: purchase.id, userId: persistedUserId, metadata: { grandTotal: totals.grandTotal } } });
     return purchase;
+  });
+}
+
+export async function receivePurchasePayment(purchaseId: string, input: unknown) {
+  const payment = input as { amount?: number; method?: string; reference?: string };
+  const amount = Number(payment.amount);
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter a valid payment amount.");
+  if (!["CASH", "UPI", "CARD", "BANK", "CREDIT"].includes(payment.method ?? "")) throw new Error("Select a valid payment method.");
+  return runMongoTransaction(async (tx) => {
+    const purchase = await tx.purchase.findUnique({ where: { id: purchaseId } });
+    if (!purchase?.supplierId) throw new Error("Purchase bill or supplier not found.");
+    if (amount > purchase.balanceAmount) throw new Error("Payment cannot exceed the remaining supplier due.");
+    const updated = await tx.purchase.update({ where: { id: purchase.id }, data: { paidAmount: purchase.paidAmount + amount, balanceAmount: purchase.balanceAmount - amount } });
+    await tx.supplier.update({ where: { id: purchase.supplierId }, data: { outstandingBalance: { decrement: amount } } });
+    await tx.supplierPayment.create({ data: { supplierId: purchase.supplierId, purchaseId: purchase.id, amount, method: payment.method as "CASH" | "UPI" | "CARD" | "BANK" | "CREDIT", reference: payment.reference?.trim() || null } });
+    return updated;
   });
 }

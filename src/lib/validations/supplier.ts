@@ -7,7 +7,11 @@ export const supplierSchema = z.object({
   email: z.union([z.string().email(), z.literal("")]).optional().default(""),
   address: z.string().trim().max(500).optional().default(""),
   gstin: z.string().trim().max(30).optional().default(""),
+  dlNumber: z.string().trim().max(80).optional().default(""),
   paymentTerms: z.string().trim().max(120).optional().default(""),
+  city: z.string().trim().max(100).optional().default(""),
+  state: z.string().trim().max(100).optional().default(""),
+  creditLimit: z.coerce.number().finite().min(0).default(0),
   openingBalance: z.coerce.number().finite().min(0).default(0),
   status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
 });
