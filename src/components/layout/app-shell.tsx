@@ -22,8 +22,8 @@ const navigation = [
   { label: "Customer Bills", href: "/sales", icon: ReceiptText },
   { label: "Payments", href: "/payments", icon: ReceiptText },
   { label: "Profit", href: "/profit", icon: ReceiptText },
-  { label: "Purchases", href: "/purchases", icon: ReceiptText },
-  { label: "Suppliers", href: "/suppliers/new", icon: Users },
+  { label: "Purchases Bills", href: "/purchases", icon: ReceiptText },
+  { label: "Suppliers/Wholesalers", href: "/suppliers/new", icon: Users },
   { label: "Profile", href: "/profile", icon: Users },
   { label: "Settings", href: "/settings", icon: Settings },
 ];

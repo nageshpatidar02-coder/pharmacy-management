@@ -7,11 +7,12 @@ export async function createSale(input: unknown) {
     const customer = data.customerId ? await tx.customer.findUnique({ where: { id: data.customerId } }) : null;
     if (data.customerId && !customer) throw new Error("Customer not found.");
     const medicines = await tx.medicine.findMany({ where: { id: { in: data.items.map((item) => item.medicineId) }, active: true } });
+    const batches = await tx.batch.findMany({ where: { id: { in: data.items.map((item) => item.batchId) } } });
     let subtotal = 0; let discount = 0; let costAmount = 0;
     const rows: Array<{ item: typeof data.items[number]; batch: { id: string; quantity: number; purchasePrice: number }; lineTotal: number }> = [];
     for (const item of data.items) {
       const medicine = medicines.find((entry) => entry.id === item.medicineId);
-      const batch = await tx.batch.findUnique({ where: { id: item.batchId } });
+      const batch = batches.find((entry) => entry.id === item.batchId);
       if (!medicine || !batch || batch.medicineId !== item.medicineId) throw new Error("Medicine or batch is invalid.");
       if (batch.quantity < item.quantity) throw new Error(`Insufficient stock for ${medicine.name}.`);
       const lineTotal = Math.max(item.quantity * item.sellingPrice - item.discount, 0); subtotal += item.quantity * item.sellingPrice; discount += item.discount; costAmount += item.quantity * batch.purchasePrice; rows.push({ item, batch, lineTotal });

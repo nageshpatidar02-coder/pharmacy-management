@@ -36,5 +36,8 @@ export const prisma = new Proxy({} as PrismaClient, {
 export async function runMongoTransaction<T>(
   operation: (tx: PrismaClient) => Promise<T>,
 ): Promise<T> {
-  return getPrismaClient().$transaction(async (tx) => operation(tx as PrismaClient));
+  return getPrismaClient().$transaction(async (tx) => operation(tx as PrismaClient), {
+    maxWait: 10000,
+    timeout: 20000,
+  });
 }

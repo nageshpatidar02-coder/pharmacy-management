@@ -14,15 +14,18 @@ export function calculatePurchaseTotals(input: PurchaseInput) {
     return { gross, discount, taxable, tax, lineTotal: taxable + tax };
   });
   const subtotal = lines.reduce((sum, line) => sum + line.gross, 0);
-  const discount = lines.reduce((sum, line) => sum + line.discount, 0);
+  const lineDiscount = lines.reduce((sum, line) => sum + line.discount, 0);
+  const discountBase = Math.max(subtotal - lineDiscount, 0);
+  const billDiscount = input.discountType === "PERCENTAGE" ? discountBase * Math.min(input.discountValue, 100) / 100 : Math.min(input.discountValue, discountBase);
+  const discount = lineDiscount + billDiscount;
   const taxableAmount = lines.reduce((sum, line) => sum + line.taxable, 0);
   const totalTax = lines.reduce((sum, line) => sum + line.tax, 0);
   const cgst = input.igst > 0 ? 0 : totalTax / 2;
   const sgst = input.igst > 0 ? 0 : totalTax / 2;
   const igst = input.igst > 0 ? input.igst : 0;
-  const beforeRound = taxableAmount + cgst + sgst + igst;
+  const beforeRound = Math.max(taxableAmount - billDiscount, 0) + cgst + sgst + igst;
   const grandTotal = Math.round(beforeRound);
-  return { lines, subtotal: roundMoney(subtotal), discount: roundMoney(discount), taxableAmount: roundMoney(taxableAmount), cgst: roundMoney(cgst), sgst: roundMoney(sgst), igst: roundMoney(igst), roundOff: roundMoney(grandTotal - beforeRound), grandTotal: roundMoney(grandTotal), paidAmount: roundMoney(Math.min(input.paidAmount, grandTotal)), balanceAmount: roundMoney(Math.max(grandTotal - input.paidAmount, 0)) };
+  return { lines, subtotal: roundMoney(subtotal), discount: roundMoney(discount), taxableAmount: roundMoney(Math.max(taxableAmount - billDiscount, 0)), cgst: roundMoney(cgst), sgst: roundMoney(sgst), igst: roundMoney(igst), roundOff: roundMoney(grandTotal - beforeRound), grandTotal: roundMoney(grandTotal), paidAmount: roundMoney(Math.min(input.paidAmount, grandTotal)), balanceAmount: roundMoney(Math.max(grandTotal - input.paidAmount, 0)) };
 }
 
 export async function listPurchases(filters: { search?: string; supplierId?: string; from?: Date; to?: Date; page?: number; pageSize?: number } = {}) {
