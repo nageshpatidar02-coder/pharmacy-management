@@ -23,6 +23,8 @@ export const config = {
     "/settings/:path*",
     "/change-password/:path*",
     "/audit-logs/:path*",
+    "/profit/:path*",
+    "/profile/:path*",
     "/login",
     "/forgot-password",
     "/reset-password",
@@ -50,6 +52,8 @@ export function proxy(request: NextRequest) {
     "/settings",
     "/change-password",
     "/audit-logs",
+    "/profit",
+    "/profile",
   ];
   const isProtectedPath =
     request.nextUrl.pathname === "/" ||

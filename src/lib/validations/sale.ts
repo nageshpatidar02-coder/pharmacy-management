@@ -1,0 +1,2 @@
+import { z } from "zod";
+export const saleSchema = z.object({ customerId: z.string().optional().or(z.literal("")), invoiceNumber: z.string().trim().min(1).max(80), paidAmount: z.coerce.number().finite().min(0), paymentMethod: z.enum(["CASH", "UPI", "CARD", "BANK", "CREDIT"]), items: z.array(z.object({ medicineId: z.string().min(1), batchId: z.string().min(1), quantity: z.coerce.number().int().positive(), sellingPrice: z.coerce.number().finite().min(0), discount: z.coerce.number().min(0).default(0) })).min(1) });

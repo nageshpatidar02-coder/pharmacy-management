@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { categorySchema, manufacturerSchema } from "@/lib/validations/medicine";
 
 type ReferenceRecord = { id: string; name: string; description?: string | null; contact?: string | null; email?: string | null; active: boolean };
 
@@ -18,14 +19,16 @@ export function ReferenceForm({ type, records }: { type: "categories" | "manufac
     setPending(true);
     setError("");
     const data = Object.fromEntries(new FormData(event.currentTarget));
+    const parsed = (type === "categories" ? categorySchema : manufacturerSchema).safeParse(data);
+    if (!parsed.success) { setError(parsed.error.issues[0]?.message ?? "Check the entered details."); setPending(false); return; }
     try {
-      const response = await fetch(editingId ? `/api/${type}/${editingId}` : `/api/${type}`, { method: editingId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
-      const result = await response.json();
+      const response = await fetch(editingId ? `/api/${type}/${editingId}` : `/api/${type}`, { method: editingId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(parsed.data) });
+      const result = await response.json().catch(() => ({}));
       if (!response.ok) { setError(result.error ?? "Unable to save."); return; }
       event.currentTarget.reset();
       setEditingId(null);
       router.refresh();
-    } catch { setError("Service unavailable. Please try again."); }
+    } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Unable to connect to the server."); }
     finally { setPending(false); }
   }
   async function deactivate(id: string, name: string) {

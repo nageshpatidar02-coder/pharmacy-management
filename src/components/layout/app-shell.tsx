@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Activity, LayoutDashboard, Menu, Moon, Package, Pill, Settings, Sun, Truck, Users, X, ShoppingCart, Layers3 } from "lucide-react";
+import { Activity, LayoutDashboard, Menu, Moon, Package, Pill, Settings, Sun, Users, X, ReceiptText, Layers3 } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { UserMenu } from "@/components/layout/user-menu";
+import { Label } from "recharts";
 
 const navigation = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -17,8 +18,14 @@ const navigation = [
   { label: "Manufacturers", href: "/manufacturers", icon: Layers3 },
   { label: "Inventory", href: "/inventory", icon: Package },
   { label: "Batches", href: "/batches", icon: Layers3 },
-  { label: "Purchases", href: "/purchases", icon: ShoppingCart },
-  { label: "Suppliers", href: "/suppliers", icon: Truck },
+  { label: "Customers", href: "/customers", icon: Users },
+  { label: "Customer Bills", href: "/sales", icon: ReceiptText },
+  { label: "Payments", href: "/payments", icon: ReceiptText },
+  { label: "Profit", href: "/profit", icon: ReceiptText },
+  { label: "Purchases", href: "/purchases", icon: ReceiptText },
+  { label: "Suppliers", href: "/suppliers/new", icon: Users },
+  { label: "Profile", href: "/profile", icon: Users },
+  { label: "Settings", href: "/settings", icon: Settings },
 ];
 
 type ShellUser = { name: string; email: string; role: { name: string } };

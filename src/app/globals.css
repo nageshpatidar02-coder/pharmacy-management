@@ -46,3 +46,10 @@ body {
 }
 
 * { border-color: var(--border); }
+
+@media print {
+  body { background: white; color: black; }
+  aside, header, nav, .print\:hidden { display: none !important; }
+  main { padding: 0 !important; }
+  .invoice-sheet { border: 0 !important; box-shadow: none !important; }
+}

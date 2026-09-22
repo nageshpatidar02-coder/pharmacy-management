@@ -3,7 +3,7 @@ import { z } from "zod";
 export const settingsSchema = z.object({
   pharmacyName: z.string().trim().min(1, "Pharmacy name is required").max(120),
   address: z.string().trim().max(500).optional(),
-  mobile: z.string().trim().max(30).optional(),
+  mobile: z.string().trim().regex(/^[0-9+()\-\s]{7,20}$/, "Enter a valid mobile number").optional(),
   email: z.union([z.string().trim().email(), z.literal("")]).optional(),
   gstin: z.string().trim().max(30).optional(),
   logoUrl: z.union([z.string().url(), z.literal("")]).optional(),

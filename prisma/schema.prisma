@@ -175,6 +175,7 @@ model Medicine {
   manufacturer       Manufacturer?  @relation(fields: [manufacturerId], references: [id])
   batches            Batch[]
   stockLedgers       StockLedger[]
+  saleItems          SaleItem[]
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
 
@@ -197,6 +198,7 @@ model Batch {
   quantity        Int           @default(0)
   freeQuantity    Int           @default(0)
   medicine        Medicine      @relation(fields: [medicineId], references: [id])
+  purchaseItems   PurchaseItem[]
   stockLedgers    StockLedger[]
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -268,7 +270,7 @@ model Supplier {
 
 model Purchase {
   id              String          @id @default(auto()) @map("_id") @db.ObjectId
-  supplierId      String          @db.ObjectId
+  supplierId      String?         @db.ObjectId
   invoiceNumber   String
   invoiceDate     DateTime
   dueDate         DateTime?
@@ -285,7 +287,7 @@ model Purchase {
   status          PurchaseStatus  @default(COMPLETED)
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
-  supplier        Supplier        @relation(fields: [supplierId], references: [id])
+  supplier        Supplier?       @relation(fields: [supplierId], references: [id])
   items           PurchaseItem[]
   payments        SupplierPayment[]
 
@@ -310,6 +312,7 @@ model PurchaseItem {
   gstPercentage  Float    @default(0)
   lineTotal      Float
   purchase       Purchase @relation(fields: [purchaseId], references: [id])
+  batch          Batch    @relation(fields: [batchId], references: [id])
 
   @@index([purchaseId])
   @@index([medicineId])
@@ -330,4 +333,82 @@ model SupplierPayment {
 
   @@index([supplierId, createdAt])
   @@index([purchaseId])
+}
+
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum SaleStatus {
+  COMPLETED
+  CANCELLED
+}
+
+model Customer {
+  id                 String             @id @default(auto()) @map("_id") @db.ObjectId
+  name               String
+  mobile             String?
+  email              String?
+  address            String?
+  openingBalance     Float              @default(0)
+  outstandingBalance Float              @default(0)
+  status             CustomerStatus     @default(ACTIVE)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  sales              Sale[]
+  payments           CustomerPayment[]
+  @@index([name])
+  @@index([mobile])
+  @@index([status])
+}
+
+model Sale {
+  id            String             @id @default(auto()) @map("_id") @db.ObjectId
+  customerId    String?            @db.ObjectId
+  invoiceNumber String             @unique
+  invoiceDate   DateTime           @default(now())
+  subtotal      Float
+  discount      Float              @default(0)
+  grandTotal    Float
+  paidAmount    Float              @default(0)
+  balanceAmount Float              @default(0)
+  costAmount    Float              @default(0)
+  status        SaleStatus         @default(COMPLETED)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  customer      Customer?          @relation(fields: [customerId], references: [id])
+  items         SaleItem[]
+  payments      CustomerPayment[]
+  @@index([invoiceDate])
+  @@index([customerId, invoiceDate])
+}
+
+model SaleItem {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  saleId       String   @db.ObjectId
+  medicineId   String   @db.ObjectId
+  batchId      String   @db.ObjectId
+  quantity     Int
+  sellingPrice Float
+  costPrice    Float
+  discount     Float    @default(0)
+  lineTotal    Float
+  sale         Sale     @relation(fields: [saleId], references: [id])
+  medicine     Medicine @relation(fields: [medicineId], references: [id])
+  @@index([saleId])
+  @@index([medicineId])
+}
+
+model CustomerPayment {
+  id         String        @id @default(auto()) @map("_id") @db.ObjectId
+  customerId String        @db.ObjectId
+  saleId     String?       @db.ObjectId
+  amount     Float
+  method     PaymentMethod
+  reference  String?
+  createdAt  DateTime      @default(now())
+  customer   Customer      @relation(fields: [customerId], references: [id])
+  sale       Sale?         @relation(fields: [saleId], references: [id])
+  @@index([customerId, createdAt])
 }
