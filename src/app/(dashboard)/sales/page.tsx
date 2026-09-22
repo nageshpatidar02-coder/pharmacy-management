@@ -10,7 +10,7 @@ export default async function SalesPage() {
   const user = await requirePermission(PERMISSIONS.salesView);
   const [customers, medicines, sales] = await Promise.all([
     listCustomers(),
-    prisma.medicine.findMany({ where: { active: true }, select: { id: true, name: true, sellingPrice: true, packSize: true, batches: { where: { quantity: { gt: 0 }, expiryDate: { gt: new Date() } }, select: { id: true, batchNumber: true, quantity: true, sellingPrice: true, mrp: true, expiryDate: true } } }, orderBy: { name: "asc" } }),
+    prisma.medicine.findMany({ where: { active: true }, select: { id: true, name: true, itemType: true, sellingPrice: true, packSize: true, unit: true, batches: { where: { quantity: { gt: 0 }, expiryDate: { gt: new Date() } }, select: { id: true, batchNumber: true, quantity: true, sellingPrice: true, mrp: true, expiryDate: true } } }, orderBy: { name: "asc" } }),
     prisma.sale.findMany({ include: { customer: true }, orderBy: { invoiceDate: "desc" }, take: 100 }),
   ]);
 

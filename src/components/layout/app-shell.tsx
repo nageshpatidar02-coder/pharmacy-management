@@ -17,7 +17,6 @@ const navigation = [
   { label: "Categories", href: "/categories", icon: Layers3 },
   { label: "Manufacturers", href: "/manufacturers", icon: Layers3 },
   { label: "Inventory", href: "/inventory", icon: Package },
-  { label: "Batches", href: "/batches", icon: Layers3 },
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Customer Bills", href: "/sales", icon: ReceiptText },
   { label: "Payments", href: "/payments", icon: ReceiptText },

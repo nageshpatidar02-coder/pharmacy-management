@@ -15,6 +15,17 @@ enum RoleName {
   STAFF
 }
 
+enum MedicineItemType {
+  TABLET
+  CAPSULE
+  SYRUP
+  INJECTION
+  DROPS
+  OINTMENT
+  EQUIPMENT
+  OTHER
+}
+
 enum UserStatus {
   ACTIVE
   INACTIVE
@@ -158,6 +169,7 @@ model Medicine {
   categoryId         String?        @db.ObjectId
   manufacturerId     String?        @db.ObjectId
   dosageForm         String?
+  itemType          MedicineItemType @default(TABLET)
   strength           String?
   packSize           String?
   unit               String
