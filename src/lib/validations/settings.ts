@@ -6,6 +6,7 @@ export const settingsSchema = z.object({
   mobile: z.string().trim().regex(/^[0-9+()\-\s]{7,20}$/, "Enter a valid mobile number").optional(),
   email: z.union([z.string().trim().email(), z.literal("")]).optional(),
   gstin: z.string().trim().max(30).optional(),
+  drugLicenseNo: z.string().trim().max(60).optional(),
   logoUrl: z.union([z.string().url(), z.literal("")]).optional(),
   invoicePrefix: z.string().trim().min(1).max(12),
   currency: z.string().trim().length(3),

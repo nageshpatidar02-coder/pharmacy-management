@@ -6,7 +6,7 @@ const money = z.coerce.number().finite().min(0);
 export const medicineSchema = z.object({
   name: z.string().trim().min(1).max(200), genericName: optionalText, composition: optionalText,
   categoryId: optionalText, manufacturerId: optionalText, dosageForm: optionalText, itemType: z.enum(["TABLET", "CAPSULE", "SYRUP", "INJECTION", "DROPS", "OINTMENT", "EQUIPMENT", "OTHER"]).default("TABLET"), strength: optionalText, packSize: optionalText,
-  unit: z.string().trim().min(1).max(40), hsnCode: optionalText, gstPercentage: z.coerce.number().min(0).max(100),
+  unit: z.string().trim().min(1).max(40), hsnCode: optionalText, gstPercentage: z.coerce.number().finite().min(0).max(100),
   prescriptionRequired: z.coerce.boolean().default(false), barcode: optionalText, sku: z.string().trim().max(80).optional().or(z.literal("")),
   mrp: money, purchasePrice: money, sellingPrice: money, minimumStock: z.coerce.number().int().min(0), active: z.coerce.boolean().default(true),
   initialQuantity: z.coerce.number().int().min(0).default(0), quantity: z.coerce.number().int().min(0).optional(),

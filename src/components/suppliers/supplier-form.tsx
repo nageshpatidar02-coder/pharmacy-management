@@ -212,6 +212,7 @@ function Field({
   id,
   label,
   type = "text",
+  inputMode,
   step,
   min,
   defaultValue,
@@ -220,12 +221,12 @@ function Field({
   required,
   error,
   placeholder,
-  inputMode,
   className,
 }: {
   id: string;
   label: string;
   type?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
   step?: string;
   min?: string;
   defaultValue?: string | number;
@@ -234,7 +235,6 @@ function Field({
   required?: boolean;
   error?: string;
   placeholder?: string;
-  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
   className?: string;
 }) {
   // Check karein ki prop controlled hai ya nahi
@@ -249,13 +249,13 @@ function Field({
         id={id}
         name={id}
         type={type}
+        inputMode={inputMode}
         step={step}
         min={min}
         {...(isControlled ? { value } : { defaultValue: defaultValue ?? "" })}
         onChange={onChange}
         required={required}
         placeholder={placeholder}
-        inputMode={inputMode}
         aria-invalid={Boolean(error)}
         className={`h-10 text-xs ${className ?? ""}`}
       />

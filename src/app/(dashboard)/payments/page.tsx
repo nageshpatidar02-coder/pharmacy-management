@@ -58,12 +58,10 @@ export default async function PaymentsPage({
 
   // Concurrent Fetching Customer & Supplier Payments
   // Concurrent Fetching Customer & Supplier Payments (With Safety Cast)
-  const db = prisma as any;
-
-  const [customerPayments, supplierPayments] = await Promise.all([
-    typeFilter === "PURCHASE" || typeof db.customerPayment?.findMany !== "function"
+  const [customerPayments, supplierPayments, walkInSales] = await Promise.all([
+    typeFilter === "PURCHASE"
       ? []
-      : db.customerPayment.findMany({
+      : prisma.customerPayment.findMany({
           where: {
             ...dateFilter,
             ...(methodFilter ? { method: methodFilter } : {}),
@@ -80,9 +78,9 @@ export default async function PaymentsPage({
           orderBy: { createdAt: "desc" },
           take: 200,
         }),
-    typeFilter === "SALE" || typeof db.supplierPayment?.findMany !== "function"
+    typeFilter === "SALE"
       ? []
-      : db.supplierPayment.findMany({
+      : prisma.supplierPayment.findMany({
           where: {
             ...dateFilter,
             ...(methodFilter ? { method: methodFilter } : {}),
@@ -99,10 +97,24 @@ export default async function PaymentsPage({
           orderBy: { createdAt: "desc" },
           take: 200,
         }),
+    typeFilter === "PURCHASE"
+      ? []
+      : prisma.sale.findMany({
+          where: {
+            customerId: null,
+            paidAmount: { gt: 0 },
+            ...dateFilter,
+            ...(methodFilter ? { paymentMethod: methodFilter } : {}),
+            ...(search ? { invoiceNumber: { contains: search, mode: "insensitive" } } : {}),
+          },
+          select: { id: true, invoiceNumber: true, paidAmount: true, paymentMethod: true, invoiceDate: true },
+          orderBy: { invoiceDate: "desc" },
+          take: 200,
+        }),
   ]);
   // Merge and Sort Ledger Entries
   const entries = [
-    ...customerPayments.map((payment: { id: any; customer: { name: any; }; sale: { invoiceNumber: any; }; amount: any; method: any; createdAt: any; }) => ({
+    ...customerPayments.map((payment) => ({
       id: `sale-${payment.id}`,
       kind: "SALE" as const,
       name: payment.customer?.name || "Walk-in Customer",
@@ -111,7 +123,7 @@ export default async function PaymentsPage({
       method: payment.method,
       date: payment.createdAt,
     })),
-    ...supplierPayments.map((payment: { id: any; supplier: { businessName: any; }; purchase: { invoiceNumber: any; }; amount: any; method: any; createdAt: any; }) => ({
+    ...supplierPayments.map((payment) => ({
       id: `purchase-${payment.id}`,
       kind: "PURCHASE" as const,
       name: payment.supplier?.businessName || "Wholesaler Account",
@@ -119,6 +131,15 @@ export default async function PaymentsPage({
       amount: payment.amount,
       method: payment.method,
       date: payment.createdAt,
+    })),
+    ...walkInSales.map((sale) => ({
+      id: `walk-in-sale-${sale.id}`,
+      kind: "SALE" as const,
+      name: "Walk-in Customer",
+      invoice: sale.invoiceNumber,
+      amount: sale.paidAmount,
+      method: sale.paymentMethod,
+      date: sale.invoiceDate,
     })),
   ].sort((a, b) => b.date.getTime() - a.date.getTime());
 
@@ -274,7 +295,7 @@ export default async function PaymentsPage({
                     <RotateCcw className="size-3.5" /> Reset Filters
                   </Button>
                 </Link>
-                <Button type="submit" size="sm" className="gap-1 min-w-[100px]">
+                <Button type="submit" size="sm" className="gap-1 min-w-25">
                   <Filter className="size-3.5" /> Filter Ledger
                 </Button>
               </div>

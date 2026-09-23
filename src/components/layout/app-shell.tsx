@@ -169,7 +169,7 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
 
       {/* Main Content Viewport */}
       <div className="min-w-0 flex-1">
-        <header className="flex h-20 items-center justify-between border-b bg-surface/80 px-4 backdrop-blur-md md:px-8">
+        <header className="app-shell-header flex h-20 items-center justify-between border-b bg-surface/80 px-4 backdrop-blur-md md:px-8">
           <div className="flex items-center gap-3">
             <Button 
               variant="ghost" 

@@ -5,11 +5,18 @@ import { ObjectId } from "mongodb";
 import { prisma, runMongoTransaction } from "@/server/db/prisma";
 import { medicineSchema, categorySchema, manufacturerSchema, batchSchema } from "@/lib/validations/medicine";
 
-export async function listMedicines(search = "") {
+export async function listMedicines(search = "", page = 1, limit = 100) {
   const itemTypes = ["TABLET", "CAPSULE", "SYRUP", "INJECTION", "DROPS", "OINTMENT", "EQUIPMENT", "OTHER"] as const;
   const normalized = search.trim().toUpperCase();
   const typeFilter = itemTypes.includes(normalized as (typeof itemTypes)[number]) ? [{ itemType: { equals: normalized as (typeof itemTypes)[number] } }] : [];
-  return prisma.medicine.findMany({ where: search ? { OR: [{ name: { contains: search, mode: "insensitive" } }, { genericName: { contains: search, mode: "insensitive" } }, { sku: { contains: search, mode: "insensitive" } }, { barcode: { contains: search, mode: "insensitive" } }, ...typeFilter, { category: { name: { contains: search, mode: "insensitive" } } }, { manufacturer: { name: { contains: search, mode: "insensitive" } } }] } : undefined, include: { category: true, manufacturer: true, batches: { select: { quantity: true, freeQuantity: true, expiryDate: true } } }, orderBy: { name: "asc" } });
+  const safePage = Math.max(1, Math.floor(page));
+  const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 100);
+  const where = search ? { OR: [{ name: { contains: search, mode: "insensitive" as const } }, { genericName: { contains: search, mode: "insensitive" as const } }, { sku: { contains: search, mode: "insensitive" as const } }, { barcode: { contains: search, mode: "insensitive" as const } }, ...typeFilter, { category: { name: { contains: search, mode: "insensitive" as const } } }, { manufacturer: { name: { contains: search, mode: "insensitive" as const } } }] } : undefined;
+  const [data, total] = await Promise.all([
+    prisma.medicine.findMany({ where, include: { category: true, manufacturer: true, batches: { select: { quantity: true, freeQuantity: true, expiryDate: true } } }, orderBy: { name: "asc" }, skip: (safePage - 1) * safeLimit, take: safeLimit }),
+    prisma.medicine.count({ where }),
+  ]);
+  return { data, total, page: safePage, limit: safeLimit, totalPages: Math.ceil(total / safeLimit) };
 }
 
 function ensureObjectId(id: string) {

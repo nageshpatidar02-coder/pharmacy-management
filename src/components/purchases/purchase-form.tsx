@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { purchaseSchema } from "@/lib/validations/purchase";
 
 // 1. Medicine Type/Category added to prevent Syrup shown as Tablet
-export type MedicineCategory = "TABLET" | "SYRUP" | "INJECTION" | "DROPS" | "OINTMENT" | "OTHER";
+export type MedicineCategory = "TABLET" | "CAPSULE" | "SYRUP" | "INJECTION" | "DROPS" | "OINTMENT" | "EQUIPMENT" | "OTHER";
 
 type Supplier = { id: string; businessName: string };
 type Medicine = { 
@@ -18,13 +18,13 @@ type Medicine = {
   mrp: number; 
   sellingPrice: number; 
   gstPercentage: number;
-  category?: MedicineCategory; // Category tracking
+  itemType: MedicineCategory;
 };
 
 type PurchaseLine = { 
   medicineId: string; 
   medicineName?: string;
-  category?: MedicineCategory;
+  itemType?: MedicineCategory;
   batchNumber: string; 
   expiryDate: string; 
   quantity: number; 
@@ -39,7 +39,7 @@ type PurchaseLine = {
 const emptyLine = (): PurchaseLine => ({ 
   medicineId: "", 
   medicineName: "",
-  category: "TABLET",
+  itemType: "TABLET",
   batchNumber: "", 
   expiryDate: "", 
   quantity: 1, 
@@ -55,7 +55,7 @@ const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 10
 
 export function PurchaseForm({ suppliers, medicines: initialMedicines }: { suppliers: Supplier[]; medicines: Medicine[] }) {
   const router = useRouter();
-  const [medicinesList, setMedicinesList] = useState<Medicine[]>(initialMedicines);
+  const [medicinesList] = useState<Medicine[]>(initialMedicines);
   const [lines, setLines] = useState<PurchaseLine[]>([emptyLine()]);
   const [supplierId, setSupplierId] = useState("");
   const [invoiceNumber, setInvoiceNumber] = useState("");
@@ -100,7 +100,7 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines }: { suppl
     updateLine(index, { 
       medicineId, 
       medicineName: medicine.name,
-      category: medicine.category || "TABLET", // Preserve exact Category (Syrup/Tablet)
+      itemType: medicine.itemType || "OTHER",
       purchaseRate: medicine.purchasePrice ?? 0, 
       mrp: medicine.mrp ?? 0, 
       sellingPrice: medicine.sellingPrice ?? 0, 
@@ -241,9 +241,9 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines }: { suppl
                 <div className="md:col-span-2">
                   <label className="text-xs font-medium flex justify-between">
                     <span>Search Medicine</span>
-                    {line.category && (
+                    {line.itemType && (
                       <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded">
-                        TYPE: {line.category}
+                        TYPE: {line.itemType}
                       </span>
                     )}
                   </label>
@@ -387,7 +387,7 @@ function SearchableMedicineSelect({
               >
                 <span className="font-medium">{item.name}</span>
                 <span className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600">
-                  {item.category || "TABLET"}
+                  {item.itemType || "OTHER"}
                 </span>
               </div>
             ))

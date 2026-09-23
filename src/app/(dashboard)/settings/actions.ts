@@ -18,5 +18,8 @@ export async function updateSettingsAction(_previousState: SettingsState, formDa
   const settings = await prisma.pharmacySettings.upsert({ where: { key: "singleton" }, create: { key: "singleton", ...data }, update: data });
   await recordAudit({ action: "settings.updated", entity: "PharmacySettings", entityId: settings.id, userId: user.id });
   revalidatePath("/settings");
+  revalidatePath("/profile");
+  revalidatePath("/sales", "layout");
+  revalidatePath("/purchases", "layout");
   return { success: "Pharmacy settings saved." };
 }

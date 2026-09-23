@@ -18,6 +18,7 @@ export default async function SettingsPage() {
     mobile: settings?.mobile ?? "",
     email: settings?.email ?? "",
     gstin: settings?.gstin ?? "",
+    drugLicenseNo: settings?.drugLicenseNo ?? "",
     logoUrl: settings?.logoUrl ?? "",
     invoicePrefix: settings?.invoicePrefix ?? "INV",
     currency: settings?.currency ?? "INR",

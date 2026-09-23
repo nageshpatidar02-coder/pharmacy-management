@@ -114,6 +114,7 @@ model PharmacySettings {
   mobile            String?
   email             String?
   gstin             String?
+  drugLicenseNo     String?
   logoUrl           String?
   invoicePrefix     String   @default("INV")
   currency          String   @default("INR")
@@ -393,6 +394,7 @@ model Sale {
   paidAmount    Float              @default(0)
   balanceAmount Float              @default(0)
   costAmount    Float              @default(0)
+  paymentMethod PaymentMethod      @default(CASH)
   status        SaleStatus         @default(COMPLETED)
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
