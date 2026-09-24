@@ -7,9 +7,8 @@ import { Building2, SlidersHorizontal, ShieldCheck } from "lucide-react";
 export default async function SettingsPage() {
   const user = await requirePermission(PERMISSIONS.settingsManage);
 
-  // Singleton settings fetch with fallback handling
   const settings = await prisma.pharmacySettings.findUnique({
-    where: { key: "singleton" },
+    where: { pharmacyId: user.pharmacyId },
   });
 
   const defaultValues = {

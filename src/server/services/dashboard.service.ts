@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/server/db/prisma";
+import { requirePharmacy } from "@/server/auth/auth";
 
 export type DashboardActivity = {
   title: string;
@@ -47,6 +48,7 @@ const emptySummary: DashboardSummary = {
 };
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
+  const { pharmacyId } = await requirePharmacy();
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const tomorrow = new Date(today);
@@ -66,28 +68,28 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     ] = await Promise.all([
       prisma.medicine.count({ where: { active: true } }),
       prisma.supplier.count({ where: { status: "ACTIVE" } }),
-      prisma.batch.findMany({ 
+      prisma.batch.findMany({ where: { pharmacyId }, 
         include: { medicine: true }, 
         orderBy: { expiryDate: "asc" } 
       }),
       prisma.purchase.aggregate({
-        where: { invoiceDate: { gte: today, lt: tomorrow }, status: "COMPLETED" },
+        where: { pharmacyId, invoiceDate: { gte: today, lt: tomorrow }, status: "COMPLETED" },
         _sum: { grandTotal: true },
         _count: { _all: true },
       }),
       prisma.sale.aggregate({
-        where: { invoiceDate: { gte: today, lt: tomorrow }, status: "COMPLETED" },
+        where: { pharmacyId, invoiceDate: { gte: today, lt: tomorrow }, status: "COMPLETED" },
         _sum: { grandTotal: true, costAmount: true },
         _count: { _all: true },
       }),
       prisma.sale.findMany({
         select: { invoiceNumber: true, grandTotal: true, invoiceDate: true },
-        orderBy: { invoiceDate: "desc" },
+        where: { pharmacyId }, orderBy: { invoiceDate: "desc" },
         take: 5,
       }),
       prisma.purchase.findMany({
         select: { invoiceNumber: true, grandTotal: true, invoiceDate: true },
-        orderBy: { invoiceDate: "desc" },
+        where: { pharmacyId }, orderBy: { invoiceDate: "desc" },
         take: 5,
       }),
     ]);

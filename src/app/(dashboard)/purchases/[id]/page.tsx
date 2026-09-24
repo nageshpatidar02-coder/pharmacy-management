@@ -12,13 +12,13 @@ import { prisma } from "@/server/db/prisma";
 export default async function PurchaseDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requirePermission(PERMISSIONS.purchaseView);
   const { id } = await params;
-  const purchase = await prisma.purchase.findUnique({ where: { id }, include: { supplier: true, items: true, payments: true } });
+  const purchase = await prisma.purchase.findFirst({ where: { id, pharmacyId: user.pharmacyId }, include: { supplier: true, items: true, payments: true } });
   if (!purchase) notFound();
 
   const [medicines, batches, settings] = await Promise.all([
     prisma.medicine.findMany({ where: { id: { in: purchase.items.map((item) => item.medicineId) } }, select: { id: true, name: true, sku: true } }),
-    prisma.batch.findMany({ where: { id: { in: purchase.items.map((item) => item.batchId) } }, select: { id: true, batchNumber: true } }),
-    prisma.pharmacySettings.findUnique({ where: { key: "singleton" } }),
+    prisma.batch.findMany({ where: { id: { in: purchase.items.map((item) => item.batchId) }, pharmacyId: user.pharmacyId }, select: { id: true, batchNumber: true } }),
+    prisma.pharmacySettings.findUnique({ where: { pharmacyId: user.pharmacyId } }),
   ]);
   const invoiceSettings: InvoiceSettings = { pharmacyName: settings?.pharmacyName ?? "Pharmacy", address: settings?.address ?? null, mobile: settings?.mobile ?? null, email: settings?.email ?? null, gstin: settings?.gstin ?? null, drugLicenseNo: settings?.drugLicenseNo ?? null, logoUrl: settings?.logoUrl ?? null, invoicePrefix: settings?.invoicePrefix ?? "INV" };
   const medicineById = new Map(medicines.map((medicine) => [medicine.id, medicine]));

@@ -74,7 +74,7 @@ export async function getCurrentUser() {
   try {
     session = await prisma.session.findUnique({
       where: { tokenHash: hashToken(token) },
-      include: { user: { include: { role: { include: { permissions: { include: { permission: true } } } } } } },
+      include: { user: { include: { pharmacy: true, role: { include: { permissions: { include: { permission: true } } } } } } },
     });
   } catch {
     return null;
@@ -91,6 +91,12 @@ export async function requireUser() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   return user;
+}
+
+export async function requirePharmacy() {
+  const user = await requireUser();
+  if (!user.pharmacyId || !user.pharmacy) redirect("/login");
+  return { user, pharmacy: user.pharmacy, pharmacyId: user.pharmacyId };
 }
 
 export async function requirePermission(permissionKey: string) {

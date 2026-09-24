@@ -22,10 +22,10 @@ export default async function ProfilePage() {
 
   // Parallel fetching for stats & pharmacy store settings
   const [customerCount, billCount, paymentTotal, storeSettings] = await Promise.all([
-    prisma.customer.count({ where: { status: "ACTIVE" } }),
-    prisma.sale.count({ where: { status: "COMPLETED" } }),
-    prisma.customerPayment.aggregate({ _sum: { amount: true } }),
-    prisma.pharmacySettings.findFirst({ where: { key: "singleton" } }),
+    prisma.customer.count({ where: { pharmacyId: user.pharmacyId, status: "ACTIVE" } }),
+    prisma.sale.count({ where: { pharmacyId: user.pharmacyId, status: "COMPLETED" } }),
+    prisma.customerPayment.aggregate({ where: { pharmacyId: user.pharmacyId }, _sum: { amount: true } }),
+    prisma.pharmacySettings.findUnique({ where: { pharmacyId: user.pharmacyId } }),
   ]);
 
   const currencySymbol = storeSettings?.currency || "₹";

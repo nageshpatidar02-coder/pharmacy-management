@@ -4,8 +4,10 @@ import { ObjectId } from "mongodb";
 
 import { prisma, runMongoTransaction } from "@/server/db/prisma";
 import { medicineSchema, categorySchema, manufacturerSchema, batchSchema } from "@/lib/validations/medicine";
+import { requirePharmacy } from "@/server/auth/auth";
 
 export async function listMedicines(search = "", page = 1, limit = 100) {
+  const { pharmacyId } = await requirePharmacy();
   const itemTypes = ["TABLET", "CAPSULE", "SYRUP", "INJECTION", "DROPS", "OINTMENT", "EQUIPMENT", "OTHER"] as const;
   const normalized = search.trim().toUpperCase();
   const typeFilter = itemTypes.includes(normalized as (typeof itemTypes)[number]) ? [{ itemType: { equals: normalized as (typeof itemTypes)[number] } }] : [];
@@ -13,7 +15,7 @@ export async function listMedicines(search = "", page = 1, limit = 100) {
   const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 100);
   const where = search ? { OR: [{ name: { contains: search, mode: "insensitive" as const } }, { genericName: { contains: search, mode: "insensitive" as const } }, { sku: { contains: search, mode: "insensitive" as const } }, { barcode: { contains: search, mode: "insensitive" as const } }, ...typeFilter, { category: { name: { contains: search, mode: "insensitive" as const } } }, { manufacturer: { name: { contains: search, mode: "insensitive" as const } } }] } : undefined;
   const [data, total] = await Promise.all([
-    prisma.medicine.findMany({ where, include: { category: true, manufacturer: true, batches: { select: { quantity: true, freeQuantity: true, expiryDate: true } } }, orderBy: { name: "asc" }, skip: (safePage - 1) * safeLimit, take: safeLimit }),
+    prisma.medicine.findMany({ where, include: { category: true, manufacturer: true, batches: { where: { pharmacyId }, select: { quantity: true, freeQuantity: true, expiryDate: true } } }, orderBy: { name: "asc" }, skip: (safePage - 1) * safeLimit, take: safeLimit }),
     prisma.medicine.count({ where }),
   ]);
   return { data, total, page: safePage, limit: safeLimit, totalPages: Math.ceil(total / safeLimit) };
@@ -48,6 +50,7 @@ function persistedMedicineData(data: MedicineData): PersistedMedicineData {
 }
 
 export async function createMedicine(input: unknown, userId?: string) {
+  const { pharmacyId } = await requirePharmacy();
   const data = medicineData(input);
   await validateReferences(data);
   if (data.sku) {
@@ -67,14 +70,15 @@ export async function createMedicine(input: unknown, userId?: string) {
     if (openingQuantity > 0) {
       const expiry = new Date(expiryDate!);
       if (Number.isNaN(expiry.getTime()) || expiry <= new Date()) throw new Error("Opening batch expiry must be a future date.");
-      const batch = await tx.batch.create({ data: { medicineId: medicine.id, batchNumber: batchNumber!, manufacturingDate: new Date(), expiryDate: expiry, purchasePrice: medicine.purchasePrice, mrp: medicine.mrp, sellingPrice: medicine.sellingPrice, quantity: openingQuantity, freeQuantity: 0 } });
-      await tx.stockLedger.create({ data: { medicineId: medicine.id, batchId: batch.id, previousQuantity: 0, quantityChange: openingQuantity, newQuantity: openingQuantity, reason: "OPENING_STOCK", reference: "MEDICINE_CREATE", userId: userId === "temporary-admin" ? undefined : userId } });
+      const batch = await tx.batch.create({ data: { pharmacyId, medicineId: medicine.id, batchNumber: batchNumber!, manufacturingDate: new Date(), expiryDate: expiry, purchasePrice: medicine.purchasePrice, mrp: medicine.mrp, sellingPrice: medicine.sellingPrice, quantity: openingQuantity, freeQuantity: 0 } });
+      await tx.stockLedger.create({ data: { pharmacyId, medicineId: medicine.id, batchId: batch.id, previousQuantity: 0, quantityChange: openingQuantity, newQuantity: openingQuantity, reason: "OPENING_STOCK", reference: "MEDICINE_CREATE", userId: userId === "temporary-admin" ? undefined : userId } });
     }
     return medicine;
   });
 }
 
 export async function updateMedicine(id: string, input: unknown, userId?: string) {
+  const { pharmacyId } = await requirePharmacy();
   ensureObjectId(id);
   const rawData = medicineData(input);
   const data = persistedMedicineData(rawData);
@@ -102,7 +106,7 @@ export async function updateMedicine(id: string, input: unknown, userId?: string
       const expiry = new Date(rawData.expiryDate);
       if (Number.isNaN(expiry.getTime())) throw new Error("Enter a valid batch expiry date.");
       const currentBatch = await tx.batch.findFirst({
-        where: { medicineId: id, batchNumber: rawData.batchNumber },
+        where: { pharmacyId, medicineId: id, batchNumber: rawData.batchNumber },
       });
       const expiryChanged = !currentBatch || currentBatch.expiryDate.getTime() !== expiry.getTime();
       if (expiryChanged && expiry <= new Date()) {
@@ -122,6 +126,7 @@ export async function updateMedicine(id: string, input: unknown, userId?: string
           })
         : await tx.batch.create({
             data: {
+              pharmacyId,
               medicineId: id,
               batchNumber: rawData.batchNumber,
               manufacturingDate: new Date(),
@@ -136,6 +141,7 @@ export async function updateMedicine(id: string, input: unknown, userId?: string
       if (!currentBatch && openingQuantity > 0) {
         await tx.stockLedger.create({
           data: {
+            pharmacyId,
             medicineId: id,
             batchId: savedBatch.id,
             previousQuantity: 0,
@@ -150,6 +156,7 @@ export async function updateMedicine(id: string, input: unknown, userId?: string
     }
     await tx.auditLog.create({
       data: {
+        pharmacyId,
         action: "medicine.updated",
         entity: "Medicine",
         entityId: id,
@@ -165,11 +172,12 @@ export async function updateMedicine(id: string, input: unknown, userId?: string
 }
 
 export async function deleteMedicine(id: string) {
+  const { pharmacyId } = await requirePharmacy();
   ensureObjectId(id);
   return runMongoTransaction(async (tx) => {
     const medicine = await tx.medicine.findUnique({ where: { id }, select: { id: true } });
     if (!medicine) throw new Error("Medicine not found.");
-    const batches = await tx.batch.findMany({ where: { medicineId: id }, select: { id: true } });
+    const batches = await tx.batch.findMany({ where: { pharmacyId, medicineId: id }, select: { id: true } });
     const batchIds = batches.map((batch) => batch.id);
     if (batchIds.length) {
       await tx.stockLedger.deleteMany({ where: { batchId: { in: batchIds } } });
@@ -180,11 +188,11 @@ export async function deleteMedicine(id: string) {
     await tx.stockLedger.deleteMany({ where: { medicineId: id } });
     await tx.saleItem.deleteMany({ where: { medicineId: id } });
     await tx.purchaseItem.deleteMany({ where: { medicineId: id } });
-    await tx.medicine.delete({ where: { id } });
+    await tx.pharmacyMedicineConfig.deleteMany({ where: { pharmacyId, medicineId: id } });
     return { id };
   });
 }
 export async function listCategories() { return prisma.category.findMany({ where:  { active: true }, orderBy: { name: "asc" } }); }
 export async function listManufacturers() { return prisma.manufacturer.findMany({ where: { active: true }, orderBy: { name: "asc" } }); }
-export async function listBatches() { return prisma.batch.findMany({ include: { medicine: true }, orderBy: { expiryDate: "asc" } }); }
+export async function listBatches() { const { pharmacyId } = await requirePharmacy(); return prisma.batch.findMany({ where: { pharmacyId }, include: { medicine: true }, orderBy: { expiryDate: "asc" } }); }
 export { categorySchema, manufacturerSchema, batchSchema };

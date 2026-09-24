@@ -63,6 +63,7 @@ export default function LoginPage() {
               {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">{error}</p>}
               <Button className="h-11 w-full" disabled={pending}><LockKeyhole className="size-4" />{pending ? "Signing in..." : "Sign in"}</Button>
             </form>
+            <p className="mt-6 text-center text-sm text-muted-foreground">New pharmacy? <Link href="/register" className="font-semibold text-primary hover:underline">Register your workspace</Link></p>
             <Link href="/demo" className="mt-5 block text-center text-xs font-semibold text-primary hover:underline">Open read-only visual preview</Link>
           </div>
         </section>

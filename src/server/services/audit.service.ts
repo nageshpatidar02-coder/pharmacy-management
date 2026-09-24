@@ -3,6 +3,7 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/server/db/prisma";
+import { requirePharmacy } from "@/server/auth/auth";
 
 export async function recordAudit(input: {
   action: string;
@@ -11,6 +12,7 @@ export async function recordAudit(input: {
   userId?: string;
   metadata?: Record<string, unknown>;
 }) {
+  const { pharmacyId } = await requirePharmacy();
   await prisma.auditLog.create({
     data: {
       action: input.action,
@@ -18,6 +20,7 @@ export async function recordAudit(input: {
       entityId: input.entityId,
       userId: input.userId,
       metadata: input.metadata as Prisma.InputJsonValue | undefined,
+      pharmacyId,
     },
   });
 }

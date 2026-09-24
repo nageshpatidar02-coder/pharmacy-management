@@ -123,7 +123,7 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
             );
           })}
 
-          {/* Super Admin / Admin User Management Link */}
+          {/* Super Admin / Admin User Management Link
           {(user.role.name === "SUPER_ADMIN" || user.role.name === "ADMIN") && (
             <Link 
               href="/users" 
@@ -137,7 +137,7 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
               <Users className={cn("size-[18px]", isRouteActive("/users") ? "text-primary-foreground" : "text-muted-foreground")} />
               Users
             </Link>
-          )}
+          )} */}
         </nav>
 
         {/* Footer Area with Settings and User Identity */}

@@ -63,6 +63,7 @@ export default async function PaymentsPage({
       ? []
       : prisma.customerPayment.findMany({
           where: {
+            pharmacyId: user.pharmacyId,
             ...dateFilter,
             ...(methodFilter ? { method: methodFilter } : {}),
             ...(search
@@ -82,6 +83,7 @@ export default async function PaymentsPage({
       ? []
       : prisma.supplierPayment.findMany({
           where: {
+            pharmacyId: user.pharmacyId,
             ...dateFilter,
             ...(methodFilter ? { method: methodFilter } : {}),
             ...(search
@@ -101,6 +103,7 @@ export default async function PaymentsPage({
       ? []
       : prisma.sale.findMany({
           where: {
+            pharmacyId: user.pharmacyId,
             customerId: null,
             paidAmount: { gt: 0 },
             ...dateFilter,

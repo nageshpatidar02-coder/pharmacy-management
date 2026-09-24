@@ -33,6 +33,7 @@ enum UserStatus {
 
 model User {
   id             String               @id @default(auto()) @map("_id") @db.ObjectId
+  pharmacyId     String               @db.ObjectId
   email          String               @unique
   name           String
   passwordHash   String
@@ -42,6 +43,7 @@ model User {
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
   role           Role                 @relation(fields: [roleId], references: [id])
+  pharmacy       Pharmacy             @relation(fields: [pharmacyId], references: [id])
   sessions       Session[]
   passwordResets PasswordResetToken[]
   auditLogs      AuditLog[]
@@ -49,6 +51,37 @@ model User {
 
   @@index([roleId])
   @@index([status])
+  @@index([pharmacyId])
+}
+
+model Pharmacy {
+  id                String             @id @default(auto()) @map("_id") @db.ObjectId
+  name              String
+  ownerName         String?
+  email             String
+  phone             String
+  address           String?
+  city              String?
+  state             String?
+  pincode           String?
+  gstin             String?
+  drugLicenseNumber String?
+  logo              String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  users             User[]
+  settings          PharmacySettings?
+  medicineConfigs   PharmacyMedicineConfig[]
+  batches           Batch[]
+  stockLedgers      StockLedger[]
+  purchases         Purchase[]
+  supplierPayments  SupplierPayment[]
+  customers         Customer[]
+  sales             Sale[]
+  customerPayments  CustomerPayment[]
+  auditLogs         AuditLog[]
+
+  @@index([email])
 }
 
 model Role {
@@ -86,9 +119,7 @@ model Session {
   userId     String   @db.ObjectId
   expiresAt  DateTime
   createdAt  DateTime @default(now())
-  lastSeenAt DateTime @default(now())
   user       User     @relation(fields: [userId], references: [id])
-
   @@index([userId])
   @@index([expiresAt])
 }
@@ -108,7 +139,7 @@ model PasswordResetToken {
 
 model PharmacySettings {
   id                String   @id @default(auto()) @map("_id") @db.ObjectId
-  key               String   @unique @default("singleton")
+  pharmacyId        String   @unique @db.ObjectId
   pharmacyName      String
   address           String?
   mobile            String?
@@ -122,21 +153,25 @@ model PharmacySettings {
   expiryWarningDays Int      @default(30)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+  pharmacy          Pharmacy @relation(fields: [pharmacyId], references: [id])
 }
 
 model AuditLog {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  action    String
-  entity    String
-  entityId  String?
-  metadata  Json?
-  userId    String?  @db.ObjectId
-  createdAt DateTime @default(now())
-  user      User?    @relation(fields: [userId], references: [id])
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  action     String
+  entity     String
+  entityId   String?
+  metadata   Json?
+  userId     String?  @db.ObjectId
+  pharmacyId String   @db.ObjectId
+  createdAt  DateTime @default(now())
+  user       User?    @relation(fields: [userId], references: [id])
+  pharmacy   Pharmacy @relation(fields: [pharmacyId], references: [id])
 
   @@index([action])
   @@index([entity, entityId])
   @@index([userId, createdAt])
+  @@index([pharmacyId, createdAt])
   @@index([createdAt])
 }
 
@@ -186,6 +221,7 @@ model Medicine {
   active             Boolean        @default(true)
   category           Category?      @relation(fields: [categoryId], references: [id])
   manufacturer       Manufacturer?  @relation(fields: [manufacturerId], references: [id])
+  pharmacyConfigs    PharmacyMedicineConfig[]
   batches            Batch[]
   purchaseItems      PurchaseItem[]
   stockLedgers       StockLedger[]
@@ -200,8 +236,26 @@ model Medicine {
   @@index([active])
 }
 
+model PharmacyMedicineConfig {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  pharmacyId      String   @db.ObjectId
+  medicineId      String   @db.ObjectId
+  baseUnit        String   @default("UNIT")
+  tabletsPerStrip Int      @default(1)
+  stripsPerBox    Int      @default(1)
+  unitsPerPack    Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  pharmacy        Pharmacy @relation(fields: [pharmacyId], references: [id])
+  medicine        Medicine @relation(fields: [medicineId], references: [id])
+
+  @@unique([pharmacyId, medicineId])
+  @@index([medicineId])
+}
+
 model Batch {
   id              String        @id @default(auto()) @map("_id") @db.ObjectId
+  pharmacyId      String        @db.ObjectId
   medicineId      String        @db.ObjectId
   batchNumber     String
   manufacturingDate DateTime
@@ -212,13 +266,15 @@ model Batch {
   quantity        Int           @default(0)
   freeQuantity    Int           @default(0)
   medicine        Medicine      @relation(fields: [medicineId], references: [id])
+  pharmacy        Pharmacy      @relation(fields: [pharmacyId], references: [id])
   purchaseItems   PurchaseItem[]
   saleItems       SaleItem[]
   stockLedgers    StockLedger[]
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  @@unique([medicineId, batchNumber])
+  @@unique([pharmacyId, medicineId, batchNumber])
+  @@index([pharmacyId, medicineId])
   @@index([medicineId])
   @@index([expiryDate])
   @@index([quantity])
@@ -226,6 +282,7 @@ model Batch {
 
 model StockLedger {
   id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  pharmacyId       String    @db.ObjectId
   medicineId       String    @db.ObjectId
   batchId          String    @db.ObjectId
   previousQuantity Int
@@ -238,17 +295,18 @@ model StockLedger {
   medicine         Medicine  @relation(fields: [medicineId], references: [id])
   batch            Batch     @relation(fields: [batchId], references: [id])
   user             User?     @relation(fields: [userId], references: [id])
+  pharmacy         Pharmacy @relation(fields: [pharmacyId], references: [id])
 
   @@index([medicineId, createdAt])
   @@index([batchId, createdAt])
   @@index([createdAt])
+  @@index([pharmacyId, createdAt])
 }
 
 enum SupplierStatus {
   ACTIVE
   INACTIVE
 }
-
 enum PaymentMethod {
   CASH
   UPI
@@ -289,6 +347,7 @@ model Supplier {
 
 model Purchase {
   id              String          @id @default(auto()) @map("_id") @db.ObjectId
+  pharmacyId      String          @db.ObjectId
   supplierId      String?         @db.ObjectId
   invoiceNumber   String
   invoiceDate     DateTime
@@ -307,6 +366,7 @@ model Purchase {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   supplier        Supplier?       @relation(fields: [supplierId], references: [id])
+  pharmacy        Pharmacy        @relation(fields: [pharmacyId], references: [id])
   items           PurchaseItem[]
   payments        SupplierPayment[]
 
@@ -314,6 +374,7 @@ model Purchase {
   @@index([invoiceDate])
   @@index([supplierId, invoiceDate])
   @@index([status])
+  @@index([pharmacyId, invoiceDate])
 }
 
 model PurchaseItem {
@@ -341,6 +402,7 @@ model PurchaseItem {
 
 model SupplierPayment {
   id            String        @id @default(auto()) @map("_id") @db.ObjectId
+  pharmacyId    String        @db.ObjectId
   supplierId    String        @db.ObjectId
   purchaseId    String?       @db.ObjectId
   amount        Float
@@ -350,9 +412,11 @@ model SupplierPayment {
   createdAt     DateTime      @default(now())
   supplier      Supplier      @relation(fields: [supplierId], references: [id])
   purchase      Purchase?     @relation(fields: [purchaseId], references: [id])
+  pharmacy      Pharmacy      @relation(fields: [pharmacyId], references: [id])
 
   @@index([supplierId, createdAt])
   @@index([purchaseId])
+  @@index([pharmacyId, createdAt])
 }
 
 enum CustomerStatus {
@@ -367,6 +431,7 @@ enum SaleStatus {
 
 model Customer {
   id                 String             @id @default(auto()) @map("_id") @db.ObjectId
+  pharmacyId         String             @db.ObjectId
   name               String
   mobile             String?
   email              String?
@@ -378,13 +443,16 @@ model Customer {
   updatedAt          DateTime           @updatedAt
   sales              Sale[]
   payments           CustomerPayment[]
+  pharmacy           Pharmacy          @relation(fields: [pharmacyId], references: [id])
   @@index([name])
   @@index([mobile])
   @@index([status])
+  @@index([pharmacyId, name])
 }
 
 model Sale {
   id            String             @id @default(auto()) @map("_id") @db.ObjectId
+  pharmacyId    String             @db.ObjectId
   customerId    String?            @db.ObjectId
   invoiceNumber String             @unique
   invoiceDate   DateTime           @default(now())
@@ -399,10 +467,12 @@ model Sale {
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
   customer      Customer?          @relation(fields: [customerId], references: [id])
+  pharmacy      Pharmacy           @relation(fields: [pharmacyId], references: [id])
   items         SaleItem[]
   payments      CustomerPayment[]
   @@index([invoiceDate])
   @@index([customerId, invoiceDate])
+  @@index([pharmacyId, invoiceDate])
 }
 
 model SaleItem {
@@ -424,6 +494,7 @@ model SaleItem {
 
 model CustomerPayment {
   id         String        @id @default(auto()) @map("_id") @db.ObjectId
+  pharmacyId String        @db.ObjectId
   customerId String        @db.ObjectId
   saleId     String?       @db.ObjectId
   amount     Float
@@ -432,5 +503,7 @@ model CustomerPayment {
   createdAt  DateTime      @default(now())
   customer   Customer      @relation(fields: [customerId], references: [id])
   sale       Sale?         @relation(fields: [saleId], references: [id])
+  pharmacy   Pharmacy      @relation(fields: [pharmacyId], references: [id])
   @@index([customerId, createdAt])
+  @@index([pharmacyId, createdAt])
 }

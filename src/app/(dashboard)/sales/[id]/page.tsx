@@ -13,14 +13,14 @@ export default async function SaleDetailPage({ params }: { params: Promise<{ id:
   const user = await requirePermission(PERMISSIONS.salesView);
   const { id } = await params;
   const sale = await prisma.sale.findUnique({
-    where: { id },
+    where: { id, pharmacyId: user.pharmacyId },
     include: { customer: true, items: { include: { medicine: { include: { category: true, manufacturer: true } } } }, payments: true },
   });
   if (!sale) notFound();
 
   const [batches, settings] = await Promise.all([
     prisma.batch.findMany({ where: { id: { in: sale.items.map((item) => item.batchId) } } }),
-    prisma.pharmacySettings.findUnique({ where: { key: "singleton" } }),
+    prisma.pharmacySettings.findUnique({ where: { pharmacyId: user.pharmacyId } }),
   ]);
   const invoiceSettings: InvoiceSettings = {
     pharmacyName: settings?.pharmacyName ?? "Pharmacy",

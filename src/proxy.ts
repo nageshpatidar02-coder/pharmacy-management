@@ -48,7 +48,7 @@ export function proxy(request: NextRequest) {
     "/payments",
     "/reports",
     "/notifications",
-    "/users",
+    // "/users",
     "/settings",
     "/change-password",
     "/audit-logs",
