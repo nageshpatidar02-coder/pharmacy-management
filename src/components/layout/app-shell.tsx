@@ -139,7 +139,7 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
             </Link>
           )} */}
         </nav>
-
+   
         {/* Footer Area with Settings and User Identity */}
         <div className="space-y-3 border-t p-4">
           <Link 
