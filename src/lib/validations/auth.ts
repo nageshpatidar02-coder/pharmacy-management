@@ -10,7 +10,7 @@ export const registrationSchema = z.object({
   ownerName: z.string().trim().min(2).max(120),
   email: z.string().trim().email().max(254),
   phone: z.string().trim().regex(/^[+\d][\d\s().-]{7,19}$/),
-  password: z.string().min(12).max(128),
+  password: z.string().min(8).max(128),
   confirmPassword: z.string().min(1).max(128),
   address: z.string().trim().max(240).optional().or(z.literal("")),
   city: z.string().trim().max(80).optional().or(z.literal("")),
@@ -29,7 +29,7 @@ export const forgotPasswordSchema = z.object({
 
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1).max(128),
-  newPassword: z.string().min(12, "Use at least 12 characters").max(128),
+  newPassword: z.string().min(8, "Use at least 8 characters").max(128),
   confirmPassword: z.string().min(1).max(128),
 }).refine(({ newPassword, confirmPassword }) => newPassword === confirmPassword, {
   message: "New passwords do not match",

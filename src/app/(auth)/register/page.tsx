@@ -197,8 +197,8 @@ export default function RegisterPage() {
                       name="password"
                       type="password"
                       autoComplete="new-password"
-                      placeholder="Min. 12 characters"
-                      minLength={12}
+                      placeholder="Min. 8 characters"
+                      minLength={8}
                       className="pl-9 bg-slate-950/80 border-slate-800 text-slate-100 placeholder:text-slate-600 focus-visible:ring-emerald-500"
                       required
                     />
