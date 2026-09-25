@@ -40,7 +40,7 @@ export async function listPurchases(filters: { search?: string; supplierId?: str
   const pageSize = Math.min(100, Math.max(1, filters.pageSize ?? 20));
   const where = {
     ...(filters.supplierId ? { supplierId: filters.supplierId } : {}),
-    ...(filters.search ? { OR: [{ invoiceNumber: { contains: filters.search, mode: "insensitive" as const } }, { supplier: { businessName: { contains: filters.search, mode: "insensitive" as const } } }, { items: { some: { medicine: { name: { contains: filters.search, mode: "insensitive" as const } } } } }] } : {}),
+    ...(filters.search ? { OR: [{ invoiceNumber: { contains: filters.search, mode: "insensitive" as const } }, { supplier: { businessName: { contains: filters.search, mode: "insensitive" as const } } }, { supplier: { contactPerson: { contains: filters.search, mode: "insensitive" as const } } }, { supplier: { mobile: { contains: filters.search, mode: "insensitive" as const } } }, { supplier: { gstin: { contains: filters.search, mode: "insensitive" as const } } }, { supplier: { city: { contains: filters.search, mode: "insensitive" as const } } }, { items: { some: { medicine: { name: { contains: filters.search, mode: "insensitive" as const } } } } }] } : {}),
     ...(filters.from || filters.to ? { invoiceDate: { ...(filters.from ? { gte: filters.from } : {}), ...(filters.to ? { lte: filters.to } : {}) } } : {}),
   };
   const [items, total] = await Promise.all([
@@ -57,7 +57,7 @@ export async function createPurchase(userId: string, input: unknown) {
   if (data.paidAmount > totals.grandTotal) throw new Error("Paid amount cannot exceed the purchase total.");
   const persistedUserId = userId === "temporary-admin" ? undefined : userId;
   return runMongoTransaction(async (tx) => {
-    const supplier = await tx.supplier.findUnique({ where: { id: data.supplierId } });
+    const supplier = await tx.supplier.findFirst({ where: { id: data.supplierId, pharmacyId } });
     if (!supplier || supplier.status !== "ACTIVE") throw new Error("Supplier is not active.");
     const medicineIds = [...new Set(data.items.map((item) => item.medicineId))];
     const medicines = await tx.medicine.findMany({ where: { id: { in: medicineIds }, active: true } });

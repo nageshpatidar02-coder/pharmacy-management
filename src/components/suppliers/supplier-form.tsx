@@ -13,7 +13,7 @@ export function SupplierForm({ initial = {} }: { initial?: SupplierValues }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  const [gstin, setGstin] = useState("");
+  const [gstin, setGstin] = useState(initial.gstin ?? "");
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -101,7 +101,6 @@ export function SupplierForm({ initial = {} }: { initial?: SupplierValues }) {
                   placeholder="22AAAAA0000A1Z5"
                   maxLength={15}
                   className="uppercase tracking-wider"
-                  defaultValue={initial.gstin ?? ""}
                 />
               </div>
               <Field 
@@ -198,7 +197,7 @@ export function SupplierForm({ initial = {} }: { initial?: SupplierValues }) {
           >
             Cancel
           </Button>
-          <Button disabled={pending} type="submit" className="min-w-[120px]">
+          <Button disabled={pending} type="submit" className="min-w-30">
             {pending ? "Saving Supplier..." : initial.id ? "Update Supplier" : "Save Supplier"}
           </Button>
         </div>

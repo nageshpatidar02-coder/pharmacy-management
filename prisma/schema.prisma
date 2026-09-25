@@ -76,6 +76,7 @@ model Pharmacy {
   stockLedgers      StockLedger[]
   purchases         Purchase[]
   supplierPayments  SupplierPayment[]
+  suppliers         Supplier[]
   customers         Customer[]
   sales             Sale[]
   customerPayments  CustomerPayment[]
@@ -322,6 +323,7 @@ enum PurchaseStatus {
 
 model Supplier {
   id              String         @id @default(auto()) @map("_id") @db.ObjectId
+  pharmacyId      String         @db.ObjectId
   businessName    String
   contactPerson   String?
   mobile          String?
@@ -340,9 +342,12 @@ model Supplier {
   updatedAt       DateTime       @updatedAt
   purchases       Purchase[]
   payments        SupplierPayment[]
+  pharmacy        Pharmacy       @relation(fields: [pharmacyId], references: [id])
 
   @@index([businessName])
   @@index([status])
+  @@index([pharmacyId])
+  @@index([pharmacyId, businessName])
 }
 
 model Purchase {
@@ -374,6 +379,7 @@ model Purchase {
   @@index([invoiceDate])
   @@index([supplierId, invoiceDate])
   @@index([status])
+  @@index([pharmacyId])
   @@index([pharmacyId, invoiceDate])
 }
 

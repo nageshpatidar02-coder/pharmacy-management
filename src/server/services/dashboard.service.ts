@@ -67,7 +67,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
       recentPurchases
     ] = await Promise.all([
       prisma.medicine.count({ where: { active: true } }),
-      prisma.supplier.count({ where: { status: "ACTIVE" } }),
+      prisma.supplier.count({ where: { pharmacyId, status: "ACTIVE" } }),
       prisma.batch.findMany({ where: { pharmacyId }, 
         include: { medicine: true }, 
         orderBy: { expiryDate: "asc" } 

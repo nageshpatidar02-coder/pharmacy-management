@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { saleSchema } from "@/lib/validations/sale";
 import { Plus, Trash2, UserPlus, ShoppingBag, Receipt, AlertCircle, RefreshCw } from "lucide-react";
 import { unitsPerStrip } from "@/lib/stock";
+import { SearchableSelect } from "@/components/shared/searchable-select";
 
 type Customer = { id: string; name: string; mobile?: string | null };
 type Batch = {
@@ -339,18 +340,13 @@ export function SaleForm({ customers, medicines }: { customers: Customer[]; medi
         <div className="space-y-1.5">
           <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Customer</label>
           <div className="flex gap-2">
-            <select
-              value={customerId}
-              onChange={(e) => { setCustomerId(e.target.value); setInvoiceNumber(generateInvoiceNo(!e.target.value)); }}
-              className="h-10 w-full rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-            >
-              <option value="">Walk-in Customer</option>
-              {customerOptions.map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.name} {customer.mobile ? `(${customer.mobile})` : ""}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              options={customerOptions.map((customer) => ({ id: customer.id, label: `${customer.name}${customer.mobile ? ` (${customer.mobile})` : ""}`, searchText: customer.mobile ?? "" }))}
+              selectedId={customerId}
+              onSelect={(id) => { setCustomerId(id); setInvoiceNumber(generateInvoiceNo(false)); }}
+              placeholder="Search customer by name or mobile..."
+              emptyMessage="No customer found."
+            />
             <Button
               type="button"
               variant="outline"
@@ -471,19 +467,13 @@ export function SaleForm({ customers, medicines }: { customers: Customer[]; medi
                 {/* Item Pick */}
                 <div className="md:col-span-3">
                   <label className="text-[10px] font-semibold text-muted-foreground md:hidden">Item</label>
-                  <select
-                    value={line.medicineId}
-                    onChange={(e) => selectMedicine(index, e.target.value)}
-                    className="h-10 w-full rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
-                    required
-                  >
-                    <option value="">Select Item</option>
-                    {medicines.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name} ({item.itemType ?? "OTHER"})
-                      </option>
-                    ))}
-                  </select>
+                  <SearchableSelect
+                    options={medicines.map((item) => ({ id: item.id, label: `${item.name} (${item.itemType ?? "OTHER"})` }))}
+                    selectedId={line.medicineId}
+                    onSelect={(id) => selectMedicine(index, id)}
+                    placeholder="Search medicine..."
+                    emptyMessage="No medicine found."
+                  />
                 </div>
 
                 {/* Batch Pick */}

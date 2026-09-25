@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { purchaseSchema } from "@/lib/validations/purchase";
+import { SearchableSelect } from "@/components/shared/searchable-select";
 
 // 1. Medicine Type/Category added to prevent Syrup shown as Tablet
 export type MedicineCategory = "TABLET" | "CAPSULE" | "SYRUP" | "INJECTION" | "DROPS" | "OINTMENT" | "EQUIPMENT" | "OTHER";
@@ -177,17 +178,13 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines }: { suppl
       <div className="grid gap-4 rounded-xl border bg-surface p-6 md:grid-cols-4">
         <label className="text-sm font-medium">
           Wholesaler / Supplier
-          <select 
-            className="mt-2 h-10 w-full rounded-md border bg-background px-3" 
-            value={supplierId} 
-            onChange={(event) => setSupplierId(event.target.value)} 
-            required
-          >
-            <option value="">Supplier Select Karein</option>
-            {suppliers.map((supplier) => (
-              <option key={supplier.id} value={supplier.id}>{supplier.businessName}</option>
-            ))}
-          </select>
+          <SearchableSelect
+            options={suppliers.map((supplier) => ({ id: supplier.id, label: supplier.businessName }))}
+            selectedId={supplierId}
+            onSelect={setSupplierId}
+            placeholder="Search wholesaler / supplier..."
+            emptyMessage="No wholesaler found."
+          />
         </label>
         <label className="text-sm font-medium">
           Invoice / Bill No.
@@ -247,11 +244,12 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines }: { suppl
                       </span>
                     )}
                   </label>
-                  <SearchableMedicineSelect
-                    medicines={medicinesList}
+                  <SearchableSelect
+                    options={medicinesList.map((medicine) => ({ id: medicine.id, label: `${medicine.name} (${medicine.itemType || "OTHER"})`, searchText: medicine.barcode ?? "" }))}
                     selectedId={line.medicineId}
-                    onSelect={(medId) => selectMedicine(index, medId)}
-                    onAddNew={() => router.push("/medicines/new")}
+                    onSelect={(medicineId) => selectMedicine(index, medicineId)}
+                    placeholder="Search medicine or barcode..."
+                    emptyMessage="No medicine found."
                   />
                 </div>
 
@@ -339,75 +337,6 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines }: { suppl
 
       {error && <p role="alert" className="text-sm text-red-600 font-medium">{error}</p>}
     </form>
-  );
-}
-
-// Searchable Medicine Dropdown Component
-function SearchableMedicineSelect({ 
-  medicines, 
-  selectedId, 
-  onSelect, 
-  onAddNew 
-}: { 
-  medicines: Medicine[]; 
-  selectedId: string; 
-  onSelect: (id: string) => void; 
-  onAddNew: () => void; 
-}) {
-  const [query, setQuery] = useState("");
-  const [isOpen, setIsOpen] = useState(false);
-
-  const selectedMed = medicines.find((m) => m.id === selectedId);
-  const filtered = medicines.filter((m) => m.name.toLowerCase().includes(query.toLowerCase()));
-
-  return (
-    <div className="relative mt-1">
-      <Input
-        placeholder="Type to search medicine..."
-        value={isOpen ? query : selectedMed ? selectedMed.name : query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setIsOpen(true);
-        }}
-        onFocus={() => setIsOpen(true)}
-        className="w-full bg-surface"
-      />
-      {isOpen && (
-        <div className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border bg-background shadow-lg">
-          {filtered.length > 0 ? (
-            filtered.map((item) => (
-              <div
-                key={item.id}
-                className="cursor-pointer px-3 py-2 text-sm hover:bg-muted flex justify-between items-center border-b"
-                onClick={() => {
-                  onSelect(item.id);
-                  setQuery(item.name);
-                  setIsOpen(false);
-                }}
-              >
-                <span className="font-medium">{item.name}</span>
-                <span className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600">
-                  {item.itemType || "OTHER"}
-                </span>
-              </div>
-            ))
-          ) : (
-            <div className="p-3 text-center text-sm text-muted-foreground">
-              <p>Koi medicine nahi mili &quot;{query}&quot; naam se.</p>
-              <Button 
-                type="button" 
-                size="sm" 
-                variant="outline" 
-                className="mt-2 text-xs" 
-                onClick={onAddNew}
-              >
-                + Create New Medicine
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
   );
 }
 
