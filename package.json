@@ -11,12 +11,14 @@
     "start:web": "next start",
     "clean": "node scripts/clean-desktop.js",
     "build": "npm run dist",
-    "build:next": "npm run prisma:generate && next build --webpack",
+    "build:next": "npm run prisma:generate && next build --webpack && npm run verify:next-standalone",
     "build:web": "npm run build:next",
     "prepare:desktop": "node scripts/prepare-desktop.js",
-    "verify:desktop": "node scripts/verify-desktop.js",
-    "dist": "npm run clean && npm run icons && npm run build:next && npm run prepare:desktop && electron-builder --win nsis --publish never && npm run verify:desktop",
-    "publish-release": "npm run clean && npm run icons && npm run build:next && npm run prepare:desktop && electron-builder --win nsis --publish always && npm run verify:desktop",
+    "verify:next-standalone": "node scripts/verify-next-standalone.js",
+    "verify:desktop:staged": "node scripts/verify-desktop.js staged",
+    "verify:desktop": "node scripts/verify-desktop.js package",
+    "dist": "npm run clean && npm run icons && npm run build:next && npm run prepare:desktop && npm run verify:desktop:staged && electron-builder --win nsis --publish never && npm run verify:desktop",
+    "publish-release": "npm run clean && npm run icons && npm run build:next && npm run prepare:desktop && npm run verify:desktop:staged && electron-builder --win nsis --publish always && npm run verify:desktop",
     "lint": "eslint .",
     "desktop:build": "npm run build:next",
     "desktop:dist": "npm run dist",
@@ -95,7 +97,18 @@
       "!**/.vscode/**",
       "!**/.DS_Store"
     ],
-    "extraResources": [{ "from": "desktop-app", "to": "app", "filter": ["**/*", "**/.*"] }],
+    "extraResources": [
+      {
+        "from": "desktop-app",
+        "to": "app",
+        "filter": ["**/*", "**/.*", "!node_modules{,/**/*}"]
+      },
+      {
+        "from": "desktop-app/node_modules",
+        "to": "app/node_modules",
+        "filter": ["**/*", "**/.*"]
+      }
+    ],
     "win": {
       "target": [
         "nsis"

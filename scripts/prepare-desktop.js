@@ -32,30 +32,12 @@ requirePath(path.join(standalone, "server.js"), "Next standalone server");
 requirePath(path.join(standalone, "node_modules"), "Next standalone dependencies");
 requirePath(path.join(root, ".next", "static"), "Next static assets");
 requirePath(path.join(root, "public"), "Public assets");
-requirePath(path.join(root, "node_modules", "@prisma", "client"), "Installed Prisma client package");
-requirePath(path.join(root, "node_modules", ".prisma", "client"), "Generated Prisma client");
 requirePath(path.join(root, "prisma", "schema.prisma"), "Prisma schema");
 
-fs.rmSync(stage, { recursive: true, force: true });
+fs.rmSync(stage, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 fs.cpSync(standalone, stage, { recursive: true, dereference: true });
 copyDirectory(path.join(root, ".next", "static"), path.join(stage, ".next", "static"), "Next static assets");
 copyDirectory(path.join(root, "public"), path.join(stage, "public"), "Public assets");
-
-const prismaPackage = path.join(stage, "node_modules", "@prisma", "client");
-fs.rmSync(prismaPackage, { recursive: true, force: true });
-copyDirectory(
-  path.join(root, "node_modules", "@prisma", "client"),
-  prismaPackage,
-  "Installed Prisma client package",
-);
-
-const generatedPrismaClient = path.join(stage, "node_modules", ".prisma", "client");
-fs.rmSync(generatedPrismaClient, { recursive: true, force: true });
-copyDirectory(
-  path.join(root, "node_modules", ".prisma", "client"),
-  generatedPrismaClient,
-  "Generated Prisma client",
-);
 
 copyDirectory(
   path.join(root, "prisma", "schema.prisma"),
@@ -68,6 +50,7 @@ const requiredRuntimeFiles = [
   "server.js",
   ".next/BUILD_ID",
   "node_modules/next/package.json",
+  "node_modules/@prisma/client/package.json",
   "node_modules/@prisma/client/default.js",
   "node_modules/.prisma/client/index.js",
   "node_modules/.prisma/client/query_engine-windows.dll.node",

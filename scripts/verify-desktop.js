@@ -6,25 +6,35 @@ const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
 const output = path.join(root, "dist");
-const resources = path.join(output, "win-unpacked", "resources", "app");
-const requiredPaths = [
+const mode = process.argv[2] ?? "package";
+if (mode !== "staged" && mode !== "package") {
+  throw new Error("Usage: node scripts/verify-desktop.js [staged|package]");
+}
+
+const runtime = mode === "staged"
+  ? path.join(root, "desktop-app")
+  : path.join(output, "win-unpacked", "resources", "app");
+const requiredRuntimePaths = [
+  "server.js",
+  ".next/BUILD_ID",
+  ".next/static",
+  "node_modules/next/package.json",
+  "node_modules/@prisma/client/package.json",
+  "node_modules/@prisma/client/default.js",
+  "node_modules/.prisma/client/index.js",
+  "node_modules/.prisma/client/query_engine-windows.dll.node",
+  "public",
+  "prisma/schema.prisma",
+];
+const requiredPackagePaths = [
   "PharmaDesk Setup.exe",
   "latest.yml",
   "PharmaDesk Setup.exe.blockmap",
   "win-unpacked/PharmaDesk.exe",
-  "win-unpacked/resources/app/server.js",
-  "win-unpacked/resources/app/.next/BUILD_ID",
-  "win-unpacked/resources/app/.next/static",
-  "win-unpacked/resources/app/node_modules/next/package.json",
-  "win-unpacked/resources/app/node_modules/@prisma/client/default.js",
-  "win-unpacked/resources/app/node_modules/.prisma/client/index.js",
-  "win-unpacked/resources/app/node_modules/.prisma/client/query_engine-windows.dll.node",
-  "win-unpacked/resources/app/public",
-  "win-unpacked/resources/app/prisma/schema.prisma",
 ];
 
-function requirePath(relativePath) {
-  const target = path.join(output, relativePath);
+function requirePath(basePath, relativePath) {
+  const target = path.join(basePath, relativePath);
   if (!fs.existsSync(target)) {
     throw new Error(`Packaged runtime verification failed; missing ${target}`);
   }
@@ -78,11 +88,37 @@ function checkHealth(url) {
   });
 }
 
+function checkLoginModule(url) {
+  return new Promise((resolve, reject) => {
+    const request = http.request(
+      url,
+      { method: "POST", headers: { "content-type": "application/json" } },
+      (response) => {
+        let body = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          body += chunk;
+        });
+        response.on("end", () => {
+          try {
+            resolve({ status: response.statusCode, body: JSON.parse(body) });
+          } catch {
+            reject(new Error(`Login route returned invalid JSON with status ${response.statusCode}.`));
+          }
+        });
+      },
+    );
+    request.setTimeout(20000, () => request.destroy(new Error("Login route timed out.")));
+    request.once("error", reject);
+    request.end("{}");
+  });
+}
+
 async function smokeTestStandalone() {
   const port = await reservePort();
-  const serverPath = path.join(resources, "server.js");
+  const serverPath = path.join(runtime, "server.js");
   const child = spawn(process.execPath, [serverPath], {
-    cwd: resources,
+    cwd: runtime,
     env: {
       ...process.env,
       DATABASE_URL: "mongodb://127.0.0.1:1/pharmadesk_build_check?serverSelectionTimeoutMS=1000",
@@ -113,6 +149,10 @@ async function smokeTestStandalone() {
       try {
         const result = await checkHealth(`http://127.0.0.1:${port}/api/health`);
         if (result.status === 503 && result.body?.ok === false && result.body.database === "unavailable") {
+          const login = await checkLoginModule(`http://127.0.0.1:${port}/api/auth/login`);
+          if (login.status !== 400 || login.body?.ok !== false) {
+            throw new Error(`Unexpected standalone login response (${login.status}): ${JSON.stringify(login.body)}\n${serverOutput}`);
+          }
           return;
         }
         throw new Error(`Unexpected standalone health response (${result.status}): ${JSON.stringify(result.body)}\n${serverOutput}`);
@@ -132,15 +172,19 @@ async function smokeTestStandalone() {
   }
 }
 
-for (const relativePath of requiredPaths) requirePath(relativePath);
+for (const relativePath of requiredRuntimePaths) requirePath(runtime, relativePath);
 
-const environmentFiles = findEnvironmentFiles(resources);
+if (mode === "package") {
+  for (const relativePath of requiredPackagePaths) requirePath(output, relativePath);
+}
+
+const environmentFiles = findEnvironmentFiles(runtime);
 if (environmentFiles.length) {
   throw new Error(`Packaged runtime contains environment files: ${environmentFiles.join(", ")}`);
 }
 
 smokeTestStandalone()
-  .then(() => console.log("Verified installer, update metadata, Next standalone server, Prisma client/engine, assets, and health route."))
+  .then(() => console.log(`Verified ${mode} Next standalone server, Prisma client/engine, assets, health, and login route.`))
   .catch((error) => {
     console.error(error.message);
     process.exitCode = 1;
