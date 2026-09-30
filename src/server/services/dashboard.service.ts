@@ -1,5 +1,6 @@
 import "server-only";
 
+import { sanitizeSensitiveError } from "@/lib/errors/sanitize-sensitive";
 import { prisma } from "@/server/db/prisma";
 import { requirePharmacy } from "@/server/auth/auth";
 
@@ -25,26 +26,6 @@ export type DashboardSummary = {
   nearExpiryCount: number;
   expiredCount: number;
   supplierCount: number;
-  databaseAvailable: boolean;
-};
-
-const emptySummary: DashboardSummary = {
-  todaySalesValue: 0,
-  todaySalesCount: 0,
-  todayProfitValue: 0,
-  todayProfitCount: 0,
-  todayPurchaseValue: 0,
-  todayPurchaseCount: 0,
-  recentActivities: [],
-  medicineCount: 0,
-  totalStockCount: 0,
-  currentStock: 0,
-  stockValue: 0,
-  lowStockCount: 0,
-  nearExpiryCount: 0,
-  expiredCount: 0,
-  supplierCount: 0,
-  databaseAvailable: false,
 };
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
@@ -158,7 +139,6 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     const todayProfitValue = salesVal - costVal;
 
     return {
-      databaseAvailable: true,
       medicineCount: medicineCount ?? 0,
       totalStockCount,
       supplierCount: supplierCount ?? 0,
@@ -176,7 +156,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
       recentActivities,
     };
   } catch (error) {
-    console.error("Dashboard database query failed", error);
-    return emptySummary;
+    console.error("Dashboard database query failed", sanitizeSensitiveError(error));
+    throw error;
   }
 }

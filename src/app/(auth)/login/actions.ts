@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 
+import { sanitizeSensitiveError } from "@/lib/errors/sanitize-sensitive";
 import { createSession } from "@/server/auth/auth";
 import { authenticateUser } from "@/server/services/auth.service";
 import { loginSchema } from "@/lib/validations/auth";
@@ -22,7 +23,7 @@ export async function loginAction(_previousState: LoginState, formData: FormData
     redirect("/dashboard");
   } catch (error) {
     if (error instanceof Error && error.message.includes("NEXT_REDIRECT")) throw error;
-    console.error("Login failed because the authentication database is unavailable.", error);
+    console.error("Login failed because the authentication database is unavailable.", sanitizeSensitiveError(error));
     return { error: "Login is temporarily unavailable. Start MongoDB, apply the Prisma schema, and seed the admin account." };
   }
 }

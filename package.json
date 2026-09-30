@@ -9,12 +9,14 @@
     "start": "electron .",
     "desktop": "concurrently --kill-others-on-fail \"next dev -p 3000\" \"wait-on http://localhost:3000 && set ELECTRON_START_URL=http://localhost:3000&& electron .\"",
     "start:web": "next start",
-    "clean": "node -e \"const fs=require('fs'); if(fs.existsSync('dist')) fs.rmSync('dist', {recursive: true, force: true});\"",
+    "clean": "node scripts/clean-desktop.js",
     "build": "npm run dist",
-    "build:next": "npm run prisma:clean && prisma generate && next build --webpack && node scripts/prepare-desktop.js",
+    "build:next": "npm run prisma:generate && next build --webpack",
     "build:web": "npm run build:next",
-    "dist": "npm run clean && npm run icons && npm run build:next && electron-builder --win nsis --publish never",
-    "publish-release": "npm run clean && npm run icons && npm run build:next && electron-builder --win nsis --publish always",
+    "prepare:desktop": "node scripts/prepare-desktop.js",
+    "verify:desktop": "node scripts/verify-desktop.js",
+    "dist": "npm run clean && npm run icons && npm run build:next && npm run prepare:desktop && electron-builder --win nsis --publish never && npm run verify:desktop",
+    "publish-release": "npm run clean && npm run icons && npm run build:next && npm run prepare:desktop && electron-builder --win nsis --publish always && npm run verify:desktop",
     "lint": "eslint .",
     "desktop:build": "npm run build:next",
     "desktop:dist": "npm run dist",
@@ -68,8 +70,9 @@
   },
   "build": {
     "appId": "com.pharmadesk.app",
-    "productName": "Pharma Desc",
+    "productName": "PharmaDesk",
     "asar": true,
+    "asarUnpack": ["**/*.node"],
     "directories": {
       "output": "dist",
       "buildResources": "public"
@@ -78,6 +81,8 @@
       "electron/**/*",
       "package.json",
       "public/**/*",
+      "!**/.env",
+      "!**/.env.*",
       "!**/*.map",
       "!**/*.ts",
       "!**/*.md",
@@ -90,45 +95,14 @@
       "!**/.vscode/**",
       "!**/.DS_Store"
     ],
-    "extraResources": [
-      {
-        "from": ".next/standalone/server.js",
-        "to": "app/server.js"
-      },
-      {
-        "from": ".next/standalone/package.json",
-        "to": "app/package.json"
-      },
-      {
-        "from": ".next/standalone/.next",
-        "to": "app/.next"
-      },
-      {
-        "from": ".next/standalone/public",
-        "to": "app/public"
-      },
-      {
-        "from": ".next/standalone/node_modules",
-        "to": "app/node_modules",
-        "filter": ["**/*", "**/.*"]
-      },
-      {
-        "from": "node_modules/.prisma/client",
-        "to": "app/node_modules/.prisma/client",
-        "filter": ["*.node", "*.dll"]
-      },
-      {
-        "from": "prisma/schema.prisma",
-        "to": "app/prisma/schema.prisma"
-      }
-    ],
+    "extraResources": [{ "from": "desktop-app", "to": "app", "filter": ["**/*", "**/.*"] }],
     "win": {
       "target": [
         "nsis"
       ],
       "icon": "public/icon.ico",
-      "artifactName": "Pharma Desc Setup.${ext}",
-      "executableName": "PharmaDesc"
+      "artifactName": "PharmaDesk Setup.${ext}",
+      "executableName": "PharmaDesk"
     },
     "nsis": {
       "oneClick": false,
@@ -137,8 +111,8 @@
       "installerIcon": "public/icon.ico",
       "uninstallerIcon": "public/icon.ico",
       "installerHeaderIcon": "public/icon.ico",
-      "shortcutName": "Pharma Desc",
-      "uninstallDisplayName": "Pharma Desc",
+      "shortcutName": "PharmaDesk",
+      "uninstallDisplayName": "PharmaDesk",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "perMachine": false

@@ -2,6 +2,15 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  turbopack: {
+    root: process.cwd(),
+  },
+  outputFileTracingIncludes: {
+    "/*": [
+      "node_modules/@prisma/client/**/*",
+      "node_modules/.prisma/client/**/*",
+    ],
+  },
   images: {
     remotePatterns: [
       {

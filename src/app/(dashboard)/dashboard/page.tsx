@@ -25,7 +25,19 @@ import Link from "next/link";
 
 export default async function Home() {
   const user = await requirePermission(PERMISSIONS.dashboardView);
-  const summary = await getDashboardSummary();
+  let summary: Awaited<ReturnType<typeof getDashboardSummary>>;
+  try {
+    summary = await getDashboardSummary();
+  } catch {
+    return (
+      <AppShell user={user}>
+        <div role="alert" className="mx-auto mt-8 flex max-w-3xl items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <AlertTriangle className="size-4 shrink-0 text-amber-600" />
+          <span>Dashboard data is unavailable. Check the MongoDB connection, then reload this page.</span>
+        </div>
+      </AppShell>
+    );
+  }
 
   // 1. Dynamic Financial Calculations (Sales, Purchase & Net Profit)
   const todaySales = summary?.todaySalesValue ?? 0;
@@ -52,14 +64,6 @@ export default async function Home() {
   return (
     <AppShell user={user}>
       <div className="mx-auto max-w-[1440px] space-y-8 p-4 md:p-6">
-        {/* Database Connection Alert */}
-        {!summary?.databaseAvailable && (
-          <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-xs flex items-center gap-2">
-            <AlertTriangle className="size-4 text-amber-600 shrink-0" />
-            <span>Database connection unavailable. Dashboard values are temporary placeholders. Check your MongoDB connection and DATABASE_URL.</span>
-          </div>
-        )}
-
         {/* Header Section */}
         <section className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
           <div>
