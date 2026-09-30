@@ -37,6 +37,20 @@ type PurchaseLine = {
   gstPercentage: number; 
 };
 
+type PurchaseInitialData = {
+  id: string;
+  supplierId: string;
+  invoiceNumber: string;
+  invoiceDate: string;
+  dueDate: string;
+  paidAmount: number;
+  paymentMethod: string;
+  paymentCount: number;
+  discountValue: number;
+  igst: number;
+  items: PurchaseLine[];
+};
+
 const emptyLine = (): PurchaseLine => ({ 
   medicineId: "", 
   medicineName: "",
@@ -54,18 +68,19 @@ const emptyLine = (): PurchaseLine => ({
 
 const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
-export function PurchaseForm({ suppliers, medicines: initialMedicines }: { suppliers: Supplier[]; medicines: Medicine[] }) {
+export function PurchaseForm({ suppliers, medicines: initialMedicines, initialData }: { suppliers: Supplier[]; medicines: Medicine[]; initialData?: PurchaseInitialData }) {
   const router = useRouter();
   const [medicinesList] = useState<Medicine[]>(initialMedicines);
-  const [lines, setLines] = useState<PurchaseLine[]>([emptyLine()]);
-  const [supplierId, setSupplierId] = useState("");
-  const [invoiceNumber, setInvoiceNumber] = useState("");
-  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().slice(0, 10));
-  const [dueDate, setDueDate] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("CREDIT");
-  const [paidAmount, setPaidAmount] = useState(0);
+  const [lines, setLines] = useState<PurchaseLine[]>(() => initialData?.items ?? [emptyLine()]);
+  const [supplierId, setSupplierId] = useState(initialData?.supplierId ?? "");
+  const [invoiceNumber, setInvoiceNumber] = useState(initialData?.invoiceNumber ?? "");
+  const [invoiceDate, setInvoiceDate] = useState(initialData?.invoiceDate ?? new Date().toISOString().slice(0, 10));
+  const [dueDate, setDueDate] = useState(initialData?.dueDate ?? "");
+  const [paymentMethod, setPaymentMethod] = useState(initialData?.paymentMethod ?? "CREDIT");
+  const [paidAmount, setPaidAmount] = useState(initialData?.paidAmount ?? 0);
   const [discountType, setDiscountType] = useState<"AMOUNT" | "PERCENTAGE">("AMOUNT");
-  const [discountValue, setDiscountValue] = useState(0);
+  const [discountValue, setDiscountValue] = useState(initialData?.discountValue ?? 0);
+  const [igst, setIgst] = useState(initialData?.igst ?? 0);
   const [barcode, setBarcode] = useState("");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
@@ -84,7 +99,8 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines }: { suppl
   }, { subtotal: 0, lineDiscount: 0, taxable: 0, tax: 0 });
 
   const billDiscount = discountType === "PERCENTAGE" ? Math.min(totals.taxable * Math.min(discountValue, 100) / 100, totals.taxable) : Math.min(Math.max(discountValue, 0), totals.taxable);
-  const grandTotal = Math.round(Math.max(totals.taxable - billDiscount, 0) + totals.tax);
+  const taxTotal = igst > 0 ? igst : totals.tax;
+  const grandTotal = Math.round(Math.max(totals.taxable - billDiscount, 0) + taxTotal);
   const totalDiscount = totals.lineDiscount + billDiscount;
   const dueAmount = Math.max(grandTotal - paidAmount, 0);
   const paymentStatus = paidAmount <= 0 ? "UNPAID" : paidAmount >= grandTotal ? "PAID" : "PARTIAL";
@@ -138,6 +154,7 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines }: { suppl
       dueDate: dueDate || undefined, 
       paymentMethod, 
       paidAmount, 
+      igst,
       discountType, 
       discountValue, 
       items: lines 
@@ -151,8 +168,8 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines }: { suppl
 
     try { 
       // Saving Purchase Bill automatically adds stock to Inventory
-      const response = await fetch("/api/purchases", { 
-        method: "POST", 
+      const response = await fetch(initialData ? `/api/purchases/${initialData.id}` : "/api/purchases", {
+        method: initialData ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" }, 
         body: JSON.stringify(parsed.data) 
       }); 
@@ -163,7 +180,7 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines }: { suppl
         return; 
       } 
       
-      router.push("/purchases"); 
+      router.push(initialData ? `/purchases/${result.id}` : "/purchases");
       router.refresh(); 
     } catch (requestError) { 
       setError(requestError instanceof Error ? requestError.message : "Server se connect nahi ho pa rahe hain."); 
@@ -184,6 +201,7 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines }: { suppl
             onSelect={setSupplierId}
             placeholder="Search wholesaler / supplier..."
             emptyMessage="No wholesaler found."
+            disabled={Boolean(initialData?.paymentCount)}
           />
         </label>
         <label className="text-sm font-medium">
@@ -299,7 +317,7 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines }: { suppl
             </label>
             <label className="text-sm font-medium">
               Payment Method
-              <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} className="mt-2 h-10 w-full rounded-md border bg-background px-3">
+              <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} disabled={Boolean(initialData)} className="mt-2 h-10 w-full rounded-md border bg-background px-3">
                 <option value="CASH">CASH</option>
                 <option value="UPI">UPI</option>
                 <option value="CARD">CARD</option>
@@ -309,15 +327,16 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines }: { suppl
             </label>
             <label className="text-sm font-medium">
               Paid Amount
-              <Input type="number" min="0" max={grandTotal} step="0.01" value={paidAmount} onChange={(event) => setPaidAmount(Math.max(0, Number(event.target.value) || 0))} />
+              <Input type="number" min="0" max={grandTotal} step="0.01" value={paidAmount} onChange={(event) => setPaidAmount(Math.max(0, Number(event.target.value) || 0))} disabled={Boolean(initialData)} />
             </label>
+            {initialData && igst > 0 ? <label className="text-sm font-medium">IGST Amount<Input type="number" min="0" step="0.01" value={igst} onChange={(event) => setIgst(Math.max(0, Number(event.target.value) || 0))} /></label> : null}
           </div>
         </div>
 
         {/* Grand Total Sidebar */}
         <div className="rounded-xl border bg-surface p-6 text-sm">
           <div className="flex justify-between"><span>Subtotal</span><strong>{money(totals.subtotal).toFixed(2)}</strong></div>
-          <div className="mt-2 flex justify-between"><span>GST Tax</span><strong>{money(totals.tax).toFixed(2)}</strong></div>
+          <div className="mt-2 flex justify-between"><span>GST Tax</span><strong>{money(taxTotal).toFixed(2)}</strong></div>
           <div className="mt-2 flex justify-between"><span>Total Discount</span><strong>{money(totalDiscount).toFixed(2)}</strong></div>
           <div className="mt-3 flex justify-between border-t pt-3 text-lg font-semibold"><span>Grand Total</span><span>{grandTotal.toFixed(2)}</span></div>
           <div className="mt-2 flex justify-between text-emerald-700"><span>Paid Amount</span><span>{money(paidAmount).toFixed(2)}</span></div>
@@ -332,7 +351,7 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines }: { suppl
       </div>
 
       <Button disabled={pending} className="w-full md:w-auto h-12 text-base px-8">
-        {pending ? "Saving Purchase & Updating Stock..." : "Save Purchase Bill"}
+        {pending ? "Saving Purchase & Updating Stock..." : initialData ? "Save Purchase Changes" : "Save Purchase Bill"}
       </Button>
 
       {error && <p role="alert" className="text-sm text-red-600 font-medium">{error}</p>}

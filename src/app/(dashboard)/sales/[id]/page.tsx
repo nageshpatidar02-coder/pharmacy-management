@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { InvoiceHeader, type InvoiceSettings } from "@/components/invoices/InvoiceHeader";
+import { BillManagementActions } from "@/components/invoices/bill-management-actions";
 import { InvoiceActions } from "@/components/purchases/invoice-actions";
 import { PaymentForm } from "@/components/sales/payment-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +18,7 @@ export default async function SaleDetailPage({ params }: { params: Promise<{ id:
     include: { customer: true, items: { include: { medicine: { include: { category: true, manufacturer: true } } } }, payments: true },
   });
   if (!sale) notFound();
+  const canManage = user.role.name === "SUPER_ADMIN" || user.role.permissions.some(({ permission }) => permission.key === PERMISSIONS.salesCreate);
 
   const [batches, settings] = await Promise.all([
     prisma.batch.findMany({ where: { id: { in: sale.items.map((item) => item.batchId) } } }),
@@ -44,7 +46,7 @@ export default async function SaleDetailPage({ params }: { params: Promise<{ id:
             <h1 className="mt-2 text-3xl font-semibold tracking-tight">Bill {sale.invoiceNumber}</h1>
             <p className="mt-2 text-muted-foreground">{sale.invoiceDate.toLocaleDateString()}</p>
           </div>
-          <div className="flex items-center gap-2 print:hidden"><InvoiceActions /><Link href="/sales" className="rounded-md border px-4 py-2 text-sm font-semibold hover:bg-muted">Back</Link></div>
+          <div className="flex items-center gap-2 print:hidden"><InvoiceActions />{canManage ? <BillManagementActions type="sales" id={sale.id} /> : null}<Link href="/sales" className="rounded-md border px-4 py-2 text-sm font-semibold hover:bg-muted">Back</Link></div>
         </div>
 
         <Card>

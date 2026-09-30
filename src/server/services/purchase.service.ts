@@ -110,6 +110,116 @@ export async function createPurchase(userId: string, input: unknown) {
   });
 }
 
+export async function updatePurchase(purchaseId: string, input: unknown) {
+  const { pharmacyId, user } = await requirePharmacy();
+  const data = purchaseSchema.parse(input);
+  const totals = calculatePurchaseTotals(data);
+  return runMongoTransaction(async (tx) => {
+    const purchase = await tx.purchase.findFirst({ where: { id: purchaseId, pharmacyId }, include: { items: true, payments: true } });
+    if (!purchase) throw new Error("Purchase bill not found.");
+    if (data.paidAmount !== purchase.paidAmount) throw new Error("Recorded payments cannot be changed while editing a bill.");
+    if (data.paidAmount > totals.grandTotal) throw new Error("Bill total cannot be less than payments already made.");
+    if (purchase.payments.length > 0 && data.supplierId !== purchase.supplierId) throw new Error("Supplier cannot be changed after a payment has been recorded.");
+
+    const supplier = await tx.supplier.findFirst({ where: { id: data.supplierId, pharmacyId } });
+    if (!supplier || supplier.status !== "ACTIVE") throw new Error("Supplier is not active.");
+    const duplicate = await tx.purchase.findFirst({ where: { supplierId: data.supplierId, invoiceNumber: data.invoiceNumber, id: { not: purchase.id } } });
+    if (duplicate) throw new Error("Invoice number is already in use for this supplier.");
+
+    const oldMedicineIds = [...new Set(purchase.items.map((item) => item.medicineId))];
+    const newMedicineIds = [...new Set(data.items.map((item) => item.medicineId))];
+    const medicines = await tx.medicine.findMany({ where: { id: { in: [...new Set([...oldMedicineIds, ...newMedicineIds])] } } });
+    if (newMedicineIds.some((id) => !medicines.some((medicine) => medicine.id === id && medicine.active))) throw new Error("One or more medicines are invalid or inactive.");
+    const medicineById = new Map(medicines.map((medicine) => [medicine.id, medicine]));
+
+    const removals = new Map<string, { medicineId: string; quantity: number }>();
+    for (const item of purchase.items) {
+      const medicine = medicineById.get(item.medicineId);
+      if (!medicine) throw new Error("A medicine from this bill is no longer available.");
+      const multiplier = medicine.itemType === "TABLET" || medicine.itemType === "CAPSULE" ? unitsPerPack(medicine.packSize) : 1;
+      const quantity = (item.quantity + item.freeQuantity) * multiplier;
+      const existing = removals.get(item.batchId);
+      removals.set(item.batchId, { medicineId: item.medicineId, quantity: (existing?.quantity ?? 0) + quantity });
+    }
+    for (const [batchId, removal] of removals) {
+      const batch = await tx.batch.findFirst({ where: { id: batchId, pharmacyId } });
+      if (!batch) throw new Error("A batch from this purchase is no longer available.");
+      const previousQuantity = batch.quantity + batch.freeQuantity;
+      if (previousQuantity < removal.quantity) throw new Error(`Cannot edit this purchase: batch ${batch.batchNumber} has less stock than this bill added.`);
+      const removeRegular = Math.min(batch.quantity, removal.quantity);
+      const removeFree = removal.quantity - removeRegular;
+      await tx.batch.update({ where: { id: batchId }, data: { quantity: batch.quantity - removeRegular, freeQuantity: batch.freeQuantity - removeFree } });
+      await tx.stockLedger.create({ data: { pharmacyId, medicineId: removal.medicineId, batchId, previousQuantity, quantityChange: -removal.quantity, newQuantity: previousQuantity - removal.quantity, reason: "PURCHASE_EDIT_REVERSAL", reference: purchase.id, userId: user.id === "temporary-admin" ? undefined : user.id } });
+    }
+
+    await tx.purchase.update({ where: { id: purchase.id }, data: { supplierId: data.supplierId, invoiceNumber: data.invoiceNumber, invoiceDate: data.invoiceDate, dueDate: data.dueDate, subtotal: totals.subtotal, discount: totals.discount, taxableAmount: totals.taxableAmount, cgst: totals.cgst, sgst: totals.sgst, igst: totals.igst, roundOff: totals.roundOff, grandTotal: totals.grandTotal, balanceAmount: totals.balanceAmount } });
+    await tx.purchaseItem.deleteMany({ where: { purchaseId: purchase.id } });
+
+    for (const [index, item] of data.items.entries()) {
+      const medicine = medicineById.get(item.medicineId)!;
+      const packMultiplier = medicine.itemType === "TABLET" || medicine.itemType === "CAPSULE" ? unitsPerPack(medicine.packSize) : 1;
+      const stockQuantity = item.quantity * packMultiplier;
+      const stockFreeQuantity = item.freeQuantity * packMultiplier;
+      const batch = await tx.batch.findFirst({ where: { pharmacyId, medicineId: item.medicineId, batchNumber: item.batchNumber } });
+      const nextQuantity = (batch?.quantity ?? 0) + stockQuantity;
+      const nextFree = (batch?.freeQuantity ?? 0) + stockFreeQuantity;
+      const savedBatch = batch
+        ? await tx.batch.update({ where: { id: batch.id }, data: { expiryDate: item.expiryDate, purchasePrice: item.purchaseRate, mrp: item.mrp, sellingPrice: item.sellingPrice, quantity: nextQuantity, freeQuantity: nextFree } })
+        : await tx.batch.create({ data: { pharmacyId, medicineId: medicine.id, batchNumber: item.batchNumber, manufacturingDate: new Date(), expiryDate: item.expiryDate, purchasePrice: item.purchaseRate, mrp: item.mrp, sellingPrice: item.sellingPrice, quantity: stockQuantity, freeQuantity: stockFreeQuantity } });
+      await tx.purchaseItem.create({ data: { purchaseId: purchase.id, medicineId: medicine.id, batchId: savedBatch.id, expiryDate: item.expiryDate, quantity: item.quantity, freeQuantity: item.freeQuantity, purchaseRate: item.purchaseRate, mrp: item.mrp, sellingPrice: item.sellingPrice, discount: totals.lines[index].discount, gstPercentage: item.gstPercentage, lineTotal: totals.lines[index].lineTotal } });
+      await tx.stockLedger.create({ data: { pharmacyId, medicineId: medicine.id, batchId: savedBatch.id, previousQuantity: batch ? batch.quantity + batch.freeQuantity : 0, quantityChange: stockQuantity + stockFreeQuantity, newQuantity: nextQuantity + nextFree, reason: "PURCHASE_EDIT", reference: purchase.id, userId: user.id === "temporary-admin" ? undefined : user.id } });
+    }
+
+    const oldSupplier = purchase.supplierId ? await tx.supplier.findFirst({ where: { id: purchase.supplierId, pharmacyId } }) : null;
+    if (purchase.supplierId === data.supplierId && oldSupplier) {
+      await tx.supplier.update({ where: { id: supplier.id }, data: { outstandingBalance: oldSupplier.outstandingBalance - purchase.balanceAmount + totals.balanceAmount } });
+    } else {
+      if (oldSupplier) await tx.supplier.update({ where: { id: oldSupplier.id }, data: { outstandingBalance: { decrement: purchase.balanceAmount } } });
+      await tx.supplier.update({ where: { id: supplier.id }, data: { outstandingBalance: { increment: totals.balanceAmount } } });
+    }
+    const persistedUserId = user.id === "temporary-admin" ? undefined : user.id;
+    await tx.auditLog.create({ data: { pharmacyId, action: "purchase.updated", entity: "Purchase", entityId: purchase.id, userId: persistedUserId, metadata: { grandTotal: totals.grandTotal } } });
+    return tx.purchase.findUnique({ where: { id: purchase.id } });
+  });
+}
+
+export async function deletePurchase(purchaseId: string) {
+  const { pharmacyId, user } = await requirePharmacy();
+  return runMongoTransaction(async (tx) => {
+    const purchase = await tx.purchase.findFirst({ where: { id: purchaseId, pharmacyId }, include: { items: true } });
+    if (!purchase) throw new Error("Purchase bill not found.");
+    const medicineIds = [...new Set(purchase.items.map((item) => item.medicineId))];
+    const medicines = await tx.medicine.findMany({ where: { id: { in: medicineIds } } });
+    const medicineById = new Map(medicines.map((medicine) => [medicine.id, medicine]));
+    const removals = new Map<string, { medicineId: string; quantity: number }>();
+    for (const item of purchase.items) {
+      const medicine = medicineById.get(item.medicineId);
+      if (!medicine) throw new Error("A medicine from this bill is no longer available.");
+      const multiplier = medicine.itemType === "TABLET" || medicine.itemType === "CAPSULE" ? unitsPerPack(medicine.packSize) : 1;
+      const quantity = (item.quantity + item.freeQuantity) * multiplier;
+      const existing = removals.get(item.batchId);
+      removals.set(item.batchId, { medicineId: item.medicineId, quantity: (existing?.quantity ?? 0) + quantity });
+    }
+    for (const [batchId, removal] of removals) {
+      const batch = await tx.batch.findFirst({ where: { id: batchId, pharmacyId } });
+      if (!batch) throw new Error("A batch from this purchase is no longer available.");
+      const previousQuantity = batch.quantity + batch.freeQuantity;
+      if (previousQuantity < removal.quantity) throw new Error(`Cannot delete this purchase: batch ${batch.batchNumber} has less stock than this bill added.`);
+      const removeRegular = Math.min(batch.quantity, removal.quantity);
+      const removeFree = removal.quantity - removeRegular;
+      await tx.batch.update({ where: { id: batchId }, data: { quantity: batch.quantity - removeRegular, freeQuantity: batch.freeQuantity - removeFree } });
+      await tx.stockLedger.create({ data: { pharmacyId, medicineId: removal.medicineId, batchId, previousQuantity, quantityChange: -removal.quantity, newQuantity: previousQuantity - removal.quantity, reason: "PURCHASE_VOID", reference: purchase.id, userId: user.id === "temporary-admin" ? undefined : user.id } });
+    }
+    if (purchase.supplierId) await tx.supplier.update({ where: { id: purchase.supplierId }, data: { outstandingBalance: { decrement: purchase.balanceAmount } } });
+    await tx.supplierPayment.updateMany({ where: { purchaseId: purchase.id }, data: { purchaseId: null } });
+    await tx.purchaseItem.deleteMany({ where: { purchaseId: purchase.id } });
+    const deleted = await tx.purchase.delete({ where: { id: purchase.id } });
+    const persistedUserId = user.id === "temporary-admin" ? undefined : user.id;
+    await tx.auditLog.create({ data: { pharmacyId, action: "purchase.deleted", entity: "Purchase", entityId: purchase.id, userId: persistedUserId, metadata: { grandTotal: purchase.grandTotal } } });
+    return deleted;
+  });
+}
+
 export async function receivePurchasePayment(purchaseId: string, input: unknown) {
   const { pharmacyId } = await requirePharmacy();
   const payment = input as { amount?: number; method?: string; reference?: string };

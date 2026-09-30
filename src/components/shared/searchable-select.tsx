@@ -16,12 +16,14 @@ export function SearchableSelect({
   onSelect,
   placeholder,
   emptyMessage = "No results found.",
+  disabled = false,
 }: {
   options: SearchableOption[];
   selectedId: string;
   onSelect: (id: string) => void;
   placeholder: string;
   emptyMessage?: string;
+  disabled?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -36,6 +38,7 @@ export function SearchableSelect({
       <Input
         value={open ? query : selected?.label ?? ""}
         placeholder={placeholder}
+        disabled={disabled}
         onFocus={() => {
           setQuery("");
           setOpen(true);

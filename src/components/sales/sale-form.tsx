@@ -44,6 +44,16 @@ type Line = {
   discount: number;
 };
 
+type SaleInitialData = {
+  id: string;
+  customerId: string | null;
+  invoiceNumber: string;
+  paidAmount: number;
+  paymentMethod: string;
+  paymentCount: number;
+  items: Array<{ medicineId: string; batchId: string; quantity: number; sellingPrice: number; discount: number }>;
+};
+
 const emptyLine = (): Line => ({
   medicineId: "",
   batchId: "",
@@ -104,17 +114,26 @@ function getItemUnitLabel(itemType: string) {
   }
 }
 
-export function SaleForm({ customers, medicines }: { customers: Customer[]; medicines: Medicine[] }) {
+export function SaleForm({ customers, medicines, initialData }: { customers: Customer[]; medicines: Medicine[]; initialData?: SaleInitialData }) {
   const router = useRouter();
   const [customerOptions, setCustomerOptions] = useState(customers);
-  const [customerId, setCustomerId] = useState("");
+  const [customerId, setCustomerId] = useState(initialData?.customerId ?? "");
   const [newCustomerName, setNewCustomerName] = useState("");
   const [newCustomerMobile, setNewCustomerMobile] = useState("");
   const [showCustomerForm, setShowCustomerForm] = useState(false);
-  const [lines, setLines] = useState<Line[]>([emptyLine()]);
-  const [invoiceNumber, setInvoiceNumber] = useState(() => generateInvoiceNo(true));
-  const [paidAmount, setPaidAmount] = useState<number | "">("");
-  const [paymentMethod, setPaymentMethod] = useState("CASH");
+  const [lines, setLines] = useState<Line[]>(() => initialData ? initialData.items.map((item) => {
+    const medicine = medicines.find((entry) => entry.id === item.medicineId);
+    const itemType = medicine?.itemType ?? "OTHER";
+    const isTablet = itemType === "TABLET" || itemType === "CAPSULE";
+    const unitsPerPackage = parseUnitsInStrip(medicine?.packSize);
+    const strips = Math.floor(item.quantity / unitsPerPackage);
+    const loose = item.quantity % unitsPerPackage;
+    const sellMode = !isTablet ? "FULL_STRIP" : loose > 0 ? "BOTH" : strips > 0 ? "FULL_STRIP" : "LOOSE_TABLET";
+    return { medicineId: item.medicineId, batchId: item.batchId, itemType, sellMode, strips: strips || 1, loose, quantity: item.quantity, unitsPerStrip: unitsPerPackage, stripPrice: item.sellingPrice * (isTablet ? unitsPerPackage : 1), perUnitPrice: item.sellingPrice, sellingPrice: item.sellingPrice * (isTablet ? unitsPerPackage : 1), discount: item.discount };
+  }) : [emptyLine()]);
+  const [invoiceNumber, setInvoiceNumber] = useState(() => initialData?.invoiceNumber ?? generateInvoiceNo(true));
+  const [paidAmount, setPaidAmount] = useState<number | "">(initialData?.paidAmount ?? "");
+  const [paymentMethod, setPaymentMethod] = useState(initialData?.paymentMethod ?? "CASH");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [creatingCustomer, setCreatingCustomer] = useState(false);
@@ -258,7 +277,7 @@ export function SaleForm({ customers, medicines }: { customers: Customer[]; medi
     const parsed = saleSchema.safeParse({
       customerId,
       invoiceNumber,
-      paidAmount: Number(paidAmount) || summary.netTotal,
+      paidAmount: initialData ? initialData.paidAmount : Number(paidAmount) || summary.netTotal,
       paymentMethod,
       items: lines.map((line) => {
         const isTablet = line.itemType === "TABLET" || line.itemType === "CAPSULE";
@@ -285,8 +304,8 @@ export function SaleForm({ customers, medicines }: { customers: Customer[]; medi
     }
 
     try {
-      const response = await fetch("/api/sales", {
-        method: "POST",
+      const response = await fetch(initialData ? `/api/sales/${initialData.id}` : "/api/sales", {
+        method: initialData ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(parsed.data),
       });
@@ -308,8 +327,8 @@ export function SaleForm({ customers, medicines }: { customers: Customer[]; medi
       {/* Header Section */}
       <div className="flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Receipt className="h-5 w-5 text-primary" /> Create New Bill
+            <h2 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <Receipt className="h-5 w-5 text-primary" /> {initialData ? "Edit Customer Bill" : "Create New Bill"}
           </h2>
           <p className="text-xs text-muted-foreground">Select customer, pick items, enter quantities, and generate bill.</p>
         </div>
@@ -346,12 +365,14 @@ export function SaleForm({ customers, medicines }: { customers: Customer[]; medi
               onSelect={(id) => { setCustomerId(id); setInvoiceNumber(generateInvoiceNo(false)); }}
               placeholder="Search customer by name or mobile..."
               emptyMessage="No customer found."
+              disabled={Boolean(initialData && (initialData.paymentCount > 0 || initialData.paidAmount > 0))}
             />
             <Button
               type="button"
               variant="outline"
               size="icon"
               title="Add Customer"
+              disabled={Boolean(initialData)}
               onClick={() => setShowCustomerForm(!showCustomerForm)}
             >
               <UserPlus className="h-4 w-4" />
@@ -364,6 +385,7 @@ export function SaleForm({ customers, medicines }: { customers: Customer[]; medi
           <select
             value={paymentMethod}
             onChange={(e) => setPaymentMethod(e.target.value)}
+            disabled={Boolean(initialData)}
             className="h-10 w-full rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
           >
             <option value="CASH">CASH</option>
@@ -382,6 +404,7 @@ export function SaleForm({ customers, medicines }: { customers: Customer[]; medi
             step="0.01"
             value={paidAmount}
             onChange={(e) => setPaidAmount(e.target.value === "" ? "" : Number(e.target.value))}
+            disabled={Boolean(initialData)}
             placeholder={`₹${summary.netTotal.toFixed(2)}`}
             className={`h-10 bg-background ${noSpinnerClass}`}
           />
@@ -694,7 +717,7 @@ export function SaleForm({ customers, medicines }: { customers: Customer[]; medi
         </div>
 
         <Button disabled={saving} size="lg" className="w-full sm:w-auto font-semibold">
-          {saving ? "Generating Bill..." : "Generate & Print Invoice"}
+          {saving ? "Saving Bill..." : initialData ? "Save Bill Changes" : "Generate & Print Invoice"}
         </Button>
       </div>
 
