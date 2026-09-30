@@ -15,10 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: {
-    default: "Medical Management System",
-    template: "%s | Medical Management System",
-  },
+  title: "localhost",
   description: "A focused operations workspace for a single-store pharmacy.",
 };
 

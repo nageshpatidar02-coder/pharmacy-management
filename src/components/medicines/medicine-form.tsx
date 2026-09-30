@@ -1,37 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { medicineSchema } from "@/lib/validations/medicine";
-import {
-  Pill,
-  Tag,
-  DollarSign,
-  Barcode,
-  Sparkles,
-  AlertCircle,
-  Percent,
-} from "lucide-react";
+import { Pill, Tag, DollarSign, AlertCircle, Percent } from "lucide-react";
 
 type Option = { id: string; name: string };
 
 type MedicineValues = {
   id?: string;
   name?: string;
-  genericName?: string | null;
-  composition?: string | null;
-  dosageForm?: string | null;
+  salt?: string | null;
   itemType?: "TABLET" | "CAPSULE" | "SYRUP" | "INJECTION" | "DROPS" | "OINTMENT" | "EQUIPMENT" | "OTHER";
-  strength?: string | null;
   packSize?: string | null;
   unit?: string;
-  hsnCode?: string | null;
   gstPercentage?: number;
   prescriptionRequired?: boolean;
-  barcode?: string | null;
-  sku?: string | null;
   mrp?: number;
   purchasePrice?: number;
   sellingPrice?: number;
@@ -40,6 +26,21 @@ type MedicineValues = {
 };
 
 const COMMON_GST_RATES = [0, 5, 12, 18, 28];
+const COMMON_UNITS: Option[] = [
+  { id: "tablet", name: "Tablet" },
+  { id: "capsule", name: "Capsule" },
+  { id: "strip", name: "Strip" },
+  { id: "box", name: "Box" },
+  { id: "bottle", name: "Bottle" },
+  { id: "vial", name: "Vial" },
+  { id: "ampoule", name: "Ampoule" },
+  { id: "pack", name: "Pack" },
+  { id: "tube", name: "Tube" },
+  { id: "jar", name: "Jar" },
+  { id: "piece", name: "Piece" },
+  { id: "unit", name: "Unit" },
+  { id: "sachet", name: "Sachet" },
+];
 
 function normalizeGst(value: unknown, fallback = 12): number {
   if (value === "" || value === null || value === undefined) return fallback;
@@ -57,47 +58,21 @@ export function MedicineForm({
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  const [sku, setSku] = useState(String(initial.sku ?? ""));
   const [name, setName] = useState(String(initial.name ?? ""));
   const [itemType, setItemType] = useState<NonNullable<MedicineValues["itemType"]>>(
     String(initial.itemType ?? "TABLET").toUpperCase() as NonNullable<MedicineValues["itemType"]>
   );
-  
-  // GST State handling fix
   const [gstPercentage, setGstPercentage] = useState<number | "">(
     normalizeGst(initial.gstPercentage)
   );
-
-  useEffect(() => {
-    setSku(String(initial.sku ?? ""));
-    setName(String(initial.name ?? ""));
-    setItemType(String(initial.itemType ?? "TABLET").toUpperCase() as NonNullable<MedicineValues["itemType"]>);
-    setGstPercentage(normalizeGst(initial.gstPercentage));
-  }, [initial.id, initial.sku, initial.name, initial.itemType, initial.gstPercentage]);
-
-  function buildSku(medicineName: string, formName: string) {
-    const cleanName = medicineName.replace(/[^a-zA-Z0-9]/g, "").substring(0, 4).toUpperCase() || "MED";
-    const cleanForm = (formName || itemType || "TAB").replace(/[^a-zA-Z0-9]/g, "").substring(0, 3).toUpperCase();
-    const randomCode = Math.floor(1000 + Math.random() * 9000);
-    return `${cleanName}-${cleanForm}-${randomCode}`;
-  }
-
-  function handleGenerateSku() {
-    const medicineName = name.trim();
-    if (!medicineName) {
-      setFieldErrors((prev) => ({ ...prev, name: "Enter medicine name to generate SKU" }));
-      return;
-    }
-    setFieldErrors((prev) => {
-      const next = { ...prev };
-      delete next.name;
-      delete next.sku;
-      return next;
-    });
-
-    const generated = buildSku(medicineName, itemType);
-    setSku(generated);
-  }
+  const [unitSelection, setUnitSelection] = useState(() => {
+    const initialUnit = String(initial.unit ?? "strip").trim();
+    return COMMON_UNITS.find((unit) => unit.id.toLowerCase() === initialUnit.toLowerCase())?.id ?? "OTHER";
+  });
+  const [customUnit, setCustomUnit] = useState(() => {
+    const initialUnit = String(initial.unit ?? "strip").trim();
+    return COMMON_UNITS.some((unit) => unit.id.toLowerCase() === initialUnit.toLowerCase()) ? "" : initialUnit;
+  });
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -120,29 +95,21 @@ export function MedicineForm({
       return;
     }
 
-    const finalSku = sku.trim() || buildSku(medicineName, itemType);
-
     const selectedGst = normalizeGst(gstPercentage, 0);
 
     const payload = {
       name: medicineName,
-      genericName: readText("genericName"),
-      composition: readText("composition"),
-      dosageForm: "",
+      composition: readText("salt"),
       itemType,
-      strength: readText("strength"),
       packSize: readText("packSize"),
-      unit: readText("unit"),
-      hsnCode: readText("hsnCode"),
+      unit: unitSelection === "OTHER" ? readText("customUnit").trim() : unitSelection,
       gstPercentage: selectedGst,
       prescriptionRequired: form.has("prescriptionRequired"),
-      barcode: readText("barcode"),
-      sku: finalSku,
       mrp: readNumber("mrp"),
       purchasePrice: readNumber("purchasePrice"),
       sellingPrice: readNumber("sellingPrice"),
       minimumStock: readNumber("minimumStock"),
-      active: form.has("active") || !initial.id,
+      active: form.has("active"),
     };
 
     const parsed = medicineSchema.safeParse(payload);
@@ -200,16 +167,12 @@ export function MedicineForm({
             <Pill className="h-5 w-5 text-primary" />
             {initial.id ? "Edit Medicine Details" : "Add New Medicine"}
           </h2>
-          <p className="text-xs text-muted-foreground">
-            Configure pharmaceutical stock, pricing, composition, GST rates, and initial stock quantities.
-          </p>
         </div>
       </div>
 
-      {/* 1. Basic Medicine Details */}
       <div className="rounded-xl border bg-card p-5 shadow-sm space-y-4">
         <h3 className="text-sm font-semibold flex items-center gap-2 border-b pb-2 text-foreground">
-          <Tag className="h-4 w-4 text-primary" /> Basic Information
+          <Tag className="h-4 w-4 text-primary" /> Medicine Information
         </h3>
         <div className="grid gap-4 md:grid-cols-3">
           <Field
@@ -228,21 +191,13 @@ export function MedicineForm({
             }}
             required
             error={fieldErrors.name}
-            placeholder="e.g. Paracetamol / Crocin"
+            placeholder="e.g. Paracetamol"
           />
           <Field
-            id="genericName"
-            label="Generic Name"
-            defaultValue={String(initial.genericName ?? "")}
-            error={fieldErrors.genericName}
-            placeholder="e.g. Acetaminophen"
-          />
-          <Field
-            id="composition"
-            label="Salt / Composition"
-            defaultValue={String(initial.composition ?? "")}
-            error={fieldErrors.composition}
-            placeholder="e.g. Paracetamol 500mg"
+            id="salt"
+            label="Salt"
+            defaultValue={String(initial.salt ?? "")}
+            placeholder="e.g. Paracetamol"
           />
           <SelectField
             id="itemType"
@@ -255,77 +210,52 @@ export function MedicineForm({
         </div>
       </div>
 
-      {/* 2. Packaging & Identifiers */}
       <div className="rounded-xl border bg-card p-5 shadow-sm space-y-4">
         <h3 className="text-sm font-semibold flex items-center gap-2 border-b pb-2 text-foreground">
-          <Barcode className="h-4 w-4 text-primary" /> Packaging & Identifiers
+          <Pill className="h-4 w-4 text-primary" /> Pack Details
         </h3>
         <div className="grid gap-4 md:grid-cols-3">
-          <Field
-            id="strength"
-            label="Strength"
-            defaultValue={String(initial.strength ?? "")}
-            placeholder="e.g. 500 mg, 10 ml"
-          />
           <Field
             id="packSize"
             label="Pack Size"
             defaultValue={String(initial.packSize ?? "")}
             placeholder="e.g. 10 Tablets / Strip"
           />
-          <Field
+          <SelectField
             id="unit"
             label="Unit *"
-            defaultValue={String(initial.unit ?? "strip")}
-            required
+            value={unitSelection}
+            options={[...COMMON_UNITS, { id: "OTHER", name: "Other" }]}
+            onChange={(value) => {
+              setUnitSelection(value);
+              setFieldErrors((previous) => {
+                const next = { ...previous };
+                delete next.unit;
+                return next;
+              });
+            }}
             error={fieldErrors.unit}
-            placeholder="e.g. strip, bottle, box"
           />
-          <Field
-            id="hsnCode"
-            label="HSN Code"
-            defaultValue={String(initial.hsnCode ?? "")}
-            placeholder="e.g. 30049099"
-          />
-
-          <div className="space-y-1.5">
-            <label htmlFor="sku" className="text-xs font-semibold text-foreground">
-              SKU / Item Code (Optional)
-            </label>
-            <div className="flex gap-1.5">
-              <Input
-                id="sku"
-                name="sku"
-                value={sku}
-                onChange={(e) => setSku(e.target.value)}
-                className="h-10 text-xs font-mono"
-                placeholder="Optional SKU / item code"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="h-10 w-10 shrink-0"
-                title="Generate SKU automatically"
-                onClick={handleGenerateSku}
-              >
-                <Sparkles className="h-4 w-4 text-primary" />
-              </Button>
-            </div>
-            {fieldErrors.sku && <p className="text-xs text-red-600">{fieldErrors.sku}</p>}
-          </div>
-
-          <Field
-            id="barcode"
-            label="Barcode / EAN"
-            defaultValue={String(initial.barcode ?? "")}
-            error={fieldErrors.barcode}
-            placeholder="Scan or enter barcode"
-          />
+          {unitSelection === "OTHER" && (
+            <Field
+              id="customUnit"
+              label="Custom Unit *"
+              value={customUnit}
+              onChange={(event) => {
+                setCustomUnit(event.target.value);
+                setFieldErrors((previous) => {
+                  const next = { ...previous };
+                  delete next.unit;
+                  return next;
+                });
+              }}
+              required
+              placeholder="Enter unit, e.g. jar"
+            />
+          )}
         </div>
       </div>
 
-      {/* 3. Pricing & Taxation */}
       <div className="rounded-xl border bg-card p-5 shadow-sm space-y-4">
         <h3 className="text-sm font-semibold flex items-center gap-2 border-b pb-2 text-foreground">
           <DollarSign className="h-4 w-4 text-primary" /> Pricing & Taxation
@@ -434,7 +364,6 @@ export function MedicineForm({
         </p>
       </div>
 
-      {/* Checkboxes */}
       <div className="flex flex-wrap gap-6 rounded-xl border bg-muted/20 p-4">
         <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
           <input
@@ -475,7 +404,7 @@ export function MedicineForm({
         >
           Cancel
         </Button>
-        <Button disabled={saving} className="font-semibold min-w-[140px]">
+        <Button disabled={saving} className="font-semibold min-w-35">
           {saving ? "Saving..." : initial.id ? "Update Medicine" : "Save Medicine & Stock"}
         </Button>
       </div>

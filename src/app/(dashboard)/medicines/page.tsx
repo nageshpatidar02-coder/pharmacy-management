@@ -11,6 +11,7 @@ export default async function MedicinesPage({
   searchParams: Promise<{ search?: string }> | { search?: string };
 }) {
   const user = await requirePermission(PERMISSIONS.medicineView);
+  const canDelete = user.role.name === "SUPER_ADMIN" || user.role.permissions.some(({ permission }) => permission.key === PERMISSIONS.medicineDelete);
 
   // Safe Resolution for Next.js 14 & Next.js 15 searchParams
   const resolvedParams = await Promise.resolve(searchParams);
@@ -18,7 +19,7 @@ export default async function MedicinesPage({
 
   return (
     <AppShell user={user}>
-      <div className="mx-auto max-w-[1440px] space-y-6 p-4 md:p-6">
+      <div className="mx-auto max-w-360 space-y-6 p-4 md:p-6">
         
         {/* Header Section */}
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
@@ -39,7 +40,7 @@ export default async function MedicinesPage({
           </Link>
         </div>
 
-        <MedicineList initialSearch={search} />
+        <MedicineList initialSearch={search} canDelete={canDelete} />
       </div>
     </AppShell>
   );

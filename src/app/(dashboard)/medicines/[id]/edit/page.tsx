@@ -20,5 +20,5 @@ export default async function EditMedicinePage({ params }: { params: Promise<{ i
 		},
 	});
 	if (!medicine) notFound();
-	return <AppShell user={user}><div className="mx-auto max-w-5xl space-y-6"><div><p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">Medicine master</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">Edit medicine</h1></div><Card><CardHeader><CardTitle>{medicine.name}</CardTitle></CardHeader><CardContent><MedicineForm initial={medicine} /></CardContent></Card></div></AppShell>;
+	return <AppShell user={user}><div className="mx-auto max-w-5xl space-y-6"><div><p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">Medicine master</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">Edit medicine</h1></div><Card><CardHeader><CardTitle>{medicine.name}</CardTitle></CardHeader><CardContent><MedicineForm initial={{ id: medicine.id, name: medicine.name, salt: medicine.composition, itemType: medicine.itemType, packSize: medicine.packSize, unit: medicine.unit, gstPercentage: medicine.gstPercentage, prescriptionRequired: medicine.prescriptionRequired, mrp: medicine.mrp, purchasePrice: medicine.purchasePrice, sellingPrice: medicine.sellingPrice, minimumStock: medicine.minimumStock, active: medicine.active }} /></CardContent></Card></div></AppShell>;
 }

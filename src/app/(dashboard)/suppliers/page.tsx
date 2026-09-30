@@ -11,6 +11,7 @@ import { LiveFilterForm } from "@/components/filters/live-filter-form";
 
 export default async function SuppliersPage({ searchParams }: { searchParams: Promise<{ search?: string }> }) {
   const user = await requirePermission(PERMISSIONS.suppliersView);
+  const canDelete = user.role.name === "SUPER_ADMIN" || user.role.permissions.some(({ permission }) => permission.key === PERMISSIONS.purchaseCreate);
   const params = await searchParams;
   const suppliers = await listSuppliers(params.search);
 
@@ -42,7 +43,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
                     <td className="py-3 font-medium">{supplier.businessName}<span className="block text-xs text-muted-foreground">{supplier.gstin ?? "GSTIN not added"}</span></td>
                     <td className="py-3">{supplier.contactPerson ?? "-"}</td><td className="py-3">{supplier.mobile ?? "-"}</td>
                     <td className="py-3">{supplier._count.purchases}</td><td className="py-3 font-semibold">{supplier.outstandingBalance.toFixed(2)}</td>
-                    <td className="py-3"><div className="flex flex-col gap-1"><Link href={`/suppliers/${supplier.id}`} className="font-semibold text-primary hover:underline">View details</Link><SupplierActions id={supplier.id} name={supplier.businessName} /></div></td>
+                    <td className="py-3"><div className="flex flex-col gap-1"><Link href={`/suppliers/${supplier.id}`} className="font-semibold text-primary hover:underline">View details</Link><SupplierActions id={supplier.id} name={supplier.businessName} canDelete={canDelete} /></div></td>
                   </tr>)}</tbody>
                 </table>
               </div>

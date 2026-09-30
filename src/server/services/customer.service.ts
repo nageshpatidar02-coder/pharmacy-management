@@ -6,7 +6,7 @@ export async function listCustomers(search = "") {
   const { pharmacyId } = await requirePharmacy();
   const term = search.trim();
   return prisma.customer.findMany({
-    where: { pharmacyId, ...(term ? { OR: [{ name: { contains: term, mode: "insensitive" } }, { mobile: { contains: term, mode: "insensitive" } }, { email: { contains: term, mode: "insensitive" } }] } : {}) },
+    where: { pharmacyId, status: "ACTIVE", ...(term ? { OR: [{ name: { contains: term, mode: "insensitive" } }, { mobile: { contains: term, mode: "insensitive" } }, { email: { contains: term, mode: "insensitive" } }] } : {}) },
     orderBy: { name: "asc" },
   });
 }

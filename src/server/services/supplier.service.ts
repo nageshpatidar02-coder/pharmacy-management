@@ -35,8 +35,8 @@ export async function deleteSupplier(id: string) {
     if (!supplier) throw new Error("Supplier not found.");
     const purchases = await tx.purchase.findMany({ where: { pharmacyId, supplierId: id }, select: { id: true } });
     const purchaseIds = purchases.map((purchase) => purchase.id);
+    await tx.supplierPayment.deleteMany({ where: { pharmacyId, supplierId: id } });
     if (purchaseIds.length) {
-      await tx.supplierPayment.deleteMany({ where: { pharmacyId, supplierId: id } });
       await tx.purchaseItem.deleteMany({ where: { purchaseId: { in: purchaseIds } } });
       await tx.purchase.deleteMany({ where: { id: { in: purchaseIds } } });
     }

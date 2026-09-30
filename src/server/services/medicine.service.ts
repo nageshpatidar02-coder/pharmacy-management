@@ -27,7 +27,13 @@ function ensureObjectId(id: string) {
 
 function medicineData(input: unknown) {
   const data = medicineSchema.parse(input);
-  return { ...data, categoryId: data.categoryId || null, manufacturerId: data.manufacturerId || null, barcode: data.barcode || null, sku: data.sku?.trim() || null };
+  return {
+    ...data,
+    ...(data.categoryId !== undefined ? { categoryId: data.categoryId || null } : {}),
+    ...(data.manufacturerId !== undefined ? { manufacturerId: data.manufacturerId || null } : {}),
+    ...(data.barcode !== undefined ? { barcode: data.barcode || null } : {}),
+    ...(data.sku !== undefined ? { sku: data.sku?.trim() || null } : {}),
+  };
 }
 
 type MedicineData = ReturnType<typeof medicineData>;
@@ -172,23 +178,19 @@ export async function updateMedicine(id: string, input: unknown, userId?: string
 }
 
 export async function deleteMedicine(id: string) {
-  const { pharmacyId } = await requirePharmacy();
+  await requirePharmacy();
   ensureObjectId(id);
   return runMongoTransaction(async (tx) => {
     const medicine = await tx.medicine.findUnique({ where: { id }, select: { id: true } });
     if (!medicine) throw new Error("Medicine not found.");
-    const batches = await tx.batch.findMany({ where: { pharmacyId, medicineId: id }, select: { id: true } });
+    const batches = await tx.batch.findMany({ where: { medicineId: id }, select: { id: true } });
     const batchIds = batches.map((batch) => batch.id);
-    if (batchIds.length) {
-      await tx.stockLedger.deleteMany({ where: { batchId: { in: batchIds } } });
-      await tx.saleItem.deleteMany({ where: { batchId: { in: batchIds } } });
-      await tx.purchaseItem.deleteMany({ where: { batchId: { in: batchIds } } });
-      await tx.batch.deleteMany({ where: { id: { in: batchIds } } });
-    }
-    await tx.stockLedger.deleteMany({ where: { medicineId: id } });
+    await tx.stockLedger.deleteMany({ where: { OR: [{ medicineId: id }, { batchId: { in: batchIds } }] } });
     await tx.saleItem.deleteMany({ where: { medicineId: id } });
     await tx.purchaseItem.deleteMany({ where: { medicineId: id } });
-    await tx.pharmacyMedicineConfig.deleteMany({ where: { pharmacyId, medicineId: id } });
+    await tx.batch.deleteMany({ where: { id: { in: batchIds } } });
+    await tx.pharmacyMedicineConfig.deleteMany({ where: { medicineId: id } });
+    await tx.medicine.delete({ where: { id } });
     return { id };
   });
 }
