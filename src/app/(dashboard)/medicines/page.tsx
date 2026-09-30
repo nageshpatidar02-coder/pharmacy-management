@@ -8,7 +8,7 @@ import { MedicineList } from "@/components/medicines/medicine-list";
 export default async function MedicinesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ search?: string }> | { search?: string };
+  searchParams: Promise<{ search?: string }>;
 }) {
   const user = await requirePermission(PERMISSIONS.medicineView);
   const canDelete = user.role.name === "SUPER_ADMIN" || user.role.permissions.some(({ permission }) => permission.key === PERMISSIONS.medicineDelete);

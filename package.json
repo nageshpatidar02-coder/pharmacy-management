@@ -1,13 +1,28 @@
 {
-  "name": "pharmacy-managment",
-  "version": "0.1.0",
+  "name": "pharma-desc",
+  "version": "1.0.1",
   "private": true,
+  "description": "Pharma Desc desktop application",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
-    "start": "next start",
+    "start": "electron .",
+    "desktop": "concurrently --kill-others-on-fail \"next dev -p 3000\" \"wait-on http://localhost:3000 && set ELECTRON_START_URL=http://localhost:3000&& electron .\"",
+    "start:web": "next start",
+    "clean": "node -e \"const fs=require('fs'); if(fs.existsSync('dist')) fs.rmSync('dist', {recursive: true, force: true});\"",
+    "build": "npm run dist",
+    "build:next": "npm run prisma:clean && prisma generate && next build --webpack && node scripts/prepare-desktop.js",
+    "build:web": "npm run build:next",
+    "dist": "npm run clean && npm run icons && npm run build:next && electron-builder --win nsis --publish never",
+    "publish-release": "npm run clean && npm run icons && npm run build:next && electron-builder --win nsis --publish always",
     "lint": "eslint .",
-    "prisma:generate": "prisma generate",
+    "desktop:build": "npm run build:next",
+    "desktop:dist": "npm run dist",
+    "dist:publish": "npm run publish-release",
+    "desktop:release": "npm run publish-release",
+    "icons": "node scripts/generate-icons.js",
+    "prisma:clean": "node -e \"const fs=require('fs'); const path=require('path'); const dir=path.join(process.cwd(),'node_modules','.prisma','client'); if (!fs.existsSync(dir)) process.exit(0); for (const entry of fs.readdirSync(dir)) { const full = path.join(dir, entry); if (entry.startsWith('query_engine-windows.dll.node.tmp') || entry.endsWith('.tmp') || entry.endsWith('.tmp.lock')) { try { fs.rmSync(full, {force: true}); console.log('Removed stale Prisma temp file:', entry); } catch (error) { console.warn('Could not remove stale Prisma temp file:', entry, error.message); } } }\"",
+    "prisma:generate": "npm run prisma:clean && prisma generate",
     "prisma:push": "prisma db push",
     "prisma:seed": "prisma db seed",
     "seed": "tsx prisma/seed.ts"
@@ -20,6 +35,9 @@
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "concurrently": "^10.0.5",
+    "electron-log": "^5.4.4",
+    "electron-updater": "^6.8.9",
     "lucide-react": "^0.544.0",
     "next": "16.3.5",
     "next-themes": "^0.4.6",
@@ -28,6 +46,7 @@
     "react-hook-form": "^7.62.0",
     "recharts": "^3.1.2",
     "tailwind-merge": "^3.3.1",
+    "wait-on": "^9.1.0",
     "zod": "^4.1.5"
   },
   "devDependencies": {
@@ -35,13 +54,103 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "electron": "^44.5.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
     "mongodb": "^7.6.0",
+    "png-to-ico": "^3.0.2",
     "prisma": "6.16.2",
+    "sharp": "^0.35.5",
     "tailwindcss": "^4",
     "tsx": "^4.20.5",
     "typescript": "^5"
+  },
+  "build": {
+    "appId": "com.pharmadesk.app",
+    "productName": "Pharma Desc",
+    "asar": true,
+    "directories": {
+      "output": "dist",
+      "buildResources": "public"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json",
+      "public/**/*",
+      "!**/*.map",
+      "!**/*.ts",
+      "!**/*.md",
+      "!**/*.test.*",
+      "!**/*.spec.*",
+      "!**/coverage/**",
+      "!**/docs/**",
+      "!**/.git/**",
+      "!**/.github/**",
+      "!**/.vscode/**",
+      "!**/.DS_Store"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone/server.js",
+        "to": "app/server.js"
+      },
+      {
+        "from": ".next/standalone/package.json",
+        "to": "app/package.json"
+      },
+      {
+        "from": ".next/standalone/.next",
+        "to": "app/.next"
+      },
+      {
+        "from": ".next/standalone/public",
+        "to": "app/public"
+      },
+      {
+        "from": ".next/standalone/node_modules",
+        "to": "app/node_modules",
+        "filter": ["**/*", "**/.*"]
+      },
+      {
+        "from": "node_modules/.prisma/client",
+        "to": "app/node_modules/.prisma/client",
+        "filter": ["*.node", "*.dll"]
+      },
+      {
+        "from": "prisma/schema.prisma",
+        "to": "app/prisma/schema.prisma"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "public/icon.ico",
+      "artifactName": "Pharma Desc Setup.${ext}",
+      "executableName": "PharmaDesc"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "runAfterFinish": true,
+      "installerIcon": "public/icon.ico",
+      "uninstallerIcon": "public/icon.ico",
+      "installerHeaderIcon": "public/icon.ico",
+      "shortcutName": "Pharma Desc",
+      "uninstallDisplayName": "Pharma Desc",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "perMachine": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "nageshpatidar02-coder",
+        "repo": "pharmacy-management",
+        "releaseType": "release"
+      }
+    ]
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

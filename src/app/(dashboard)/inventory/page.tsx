@@ -87,7 +87,7 @@ function stockLabel(batch: {
 export default async function InventoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ search?: string }> | { search?: string };
+  searchParams: Promise<{ search?: string }>;
 }) {
   const user = await requirePermission(PERMISSIONS.inventoryView);
   const params = await Promise.resolve(searchParams);
@@ -101,7 +101,7 @@ export default async function InventoryPage({
 
   return (
     <AppShell user={user}>
-      <div className="mx-auto max-w-[1440px] space-y-6 p-4 md:p-6">
+      <div className="mx-auto max-w-360 space-y-6 p-4 md:p-6">
         {/* Header */}
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
           <div>

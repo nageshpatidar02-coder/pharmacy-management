@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title description">
+  <title id="title">Pharma Desk</title>
+  <desc id="description">A medical cross and pill above a pharmacy counter.</desc>
+  <rect width="512" height="512" rx="112" fill="#10B981"/>
+  <circle cx="164" cy="174" r="82" fill="#FFFFFF"/>
+  <path d="M145 117h38v38h38v38h-38v38h-38v-38h-38v-38h38z" fill="#2563EB"/>
+  <g transform="rotate(-34 344 174)">
+    <rect x="284" y="128" width="132" height="92" rx="46" fill="#FFFFFF"/>
+    <path d="M350 128h20a46 46 0 0 1 0 92h-20z" fill="#2563EB"/>
+    <path d="M350 129v90" fill="none" stroke="#10B981" stroke-width="8"/>
+  </g>
+  <path d="M88 306h336a18 18 0 0 1 18 18v22H70v-22a18 18 0 0 1 18-18z" fill="#FFFFFF"/>
+  <path d="M97 346h318v24a18 18 0 0 1-18 18H115a18 18 0 0 1-18-18z" fill="#2563EB"/>
+  <path d="M126 388h34v54h-34zm226 0h34v54h-34z" fill="#FFFFFF"/>
+  <path d="M108 442h296" fill="none" stroke="#FFFFFF" stroke-linecap="round" stroke-width="18"/>
+</svg>

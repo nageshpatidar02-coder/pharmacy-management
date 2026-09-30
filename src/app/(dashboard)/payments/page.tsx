@@ -26,13 +26,7 @@ export default async function PaymentsPage({
     method?: string;
     from?: string;
     to?: string;
-  }> | {
-    search?: string;
-    type?: string;
-    method?: string;
-    from?: string;
-    to?: string;
-  };
+  }>;
 }) {
   const user = await requirePermission(PERMISSIONS.salesView);
 

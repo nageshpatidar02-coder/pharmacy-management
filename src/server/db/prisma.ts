@@ -13,9 +13,10 @@ function getPrismaClient() {
 
   const databaseUrl = process.env.DATABASE_URL?.trim();
   if (!databaseUrl) {
-    throw new Error(
-      "Missing DATABASE_URL environment variable. Set it in Vercel before using the database.",
-    );
+    throw new Error("Missing DATABASE_URL. Configure a MongoDB URL in the app environment or user config.");
+  }
+  if (!/^mongodb(?:\+srv)?:\/\//i.test(databaseUrl)) {
+    throw new Error("This Prisma schema uses MongoDB; DATABASE_URL must start with mongodb:// or mongodb+srv://.");
   }
 
   const client = new PrismaClient({
