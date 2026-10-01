@@ -165,7 +165,7 @@ async function createWindow(url) {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    title: APP_NAME,
+    title: process.env.PHARMADESK_WINDOW_TITLE ||"PharmaDesk"|| APP_NAME,
     show: false,
     ...(fs.existsSync(ICON_PATH) ? { icon: ICON_PATH } : {}),
     webPreferences: {
