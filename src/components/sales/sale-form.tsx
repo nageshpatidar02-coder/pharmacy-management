@@ -83,10 +83,6 @@ function floorMoney(value: number) {
   return Math.floor((value + Number.EPSILON) * 100) / 100;
 }
 
-function roundUpToCent(value: number) {
-  return Math.ceil((value - Number.EPSILON) * 100) / 100;
-}
-
 function getLineSubtotal(line: Line) {
   const isTablet = line.itemType === "TABLET" || line.itemType === "CAPSULE";
   if (!isTablet) return (line.quantity || 0) * (line.stripPrice || 0);
@@ -119,14 +115,12 @@ function normalizeSaleLine(line: Line, changes: Partial<Line>, medicines: Medici
   const packSize = Math.max(1, updated.unitsPerStrip || 1);
   const purchasePricePerPack = Math.max(0, batch?.purchasePrice ?? medicine?.purchasePrice ?? 0);
   const purchasePricePerUnit = purchasePricePerPack / (isTablet ? packSize : 1);
-  const minimumUnitPrice = roundUpToCent(purchasePricePerUnit);
-  const minimumPackPrice = Math.max(purchasePricePerPack, minimumUnitPrice * (isTablet ? packSize : 1));
+  const batchSellingPrice = Math.max(0, batch?.sellingPrice ?? medicine?.sellingPrice ?? updated.stripPrice ?? 0);
+  updated.stripPrice = batchSellingPrice;
+  updated.perUnitPrice = batchSellingPrice / packSize;
   const requestedRateBelowCost = updated.sellMode === "LOOSE_TABLET"
-    ? updated.perUnitPrice < minimumUnitPrice
-    : updated.stripPrice < purchasePricePerPack;
-
-  updated.stripPrice = Math.max(0, updated.stripPrice || 0, minimumPackPrice);
-  updated.perUnitPrice = Math.max(0, updated.perUnitPrice || 0, minimumUnitPrice);
+    ? updated.perUnitPrice + 0.000001 < purchasePricePerUnit
+    : updated.stripPrice + 0.000001 < purchasePricePerPack;
   updated.quantity = isTablet
     ? calculateSaleQuantity(updated.itemType, updated.sellMode, updated.strips, updated.loose, updated.quantity, packSize)
     : Math.max(0, Number(updated.quantity) || 0);
@@ -200,10 +194,12 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
     const itemType = medicine?.itemType ?? "OTHER";
     const isTablet = itemType === "TABLET" || itemType === "CAPSULE";
     const unitsPerPackage = parseUnitsInStrip(medicine?.packSize);
+    const batch = medicine?.batches.find((entry) => entry.id === item.batchId);
+    const stripPrice = batch?.sellingPrice ?? item.sellingPrice * (isTablet ? unitsPerPackage : 1);
     const strips = Math.floor(item.quantity / unitsPerPackage);
     const loose = item.quantity % unitsPerPackage;
     const sellMode = !isTablet ? "FULL_STRIP" : loose > 0 ? "BOTH" : strips > 0 ? "FULL_STRIP" : "LOOSE_TABLET";
-    return { medicineId: item.medicineId, batchId: item.batchId, itemType, sellMode, strips: strips || 1, loose, quantity: item.quantity, unitsPerStrip: unitsPerPackage, stripPrice: item.sellingPrice * (isTablet ? unitsPerPackage : 1), perUnitPrice: item.sellingPrice, sellingPrice: item.sellingPrice * (isTablet ? unitsPerPackage : 1), discount: item.discount, discountType: "AMOUNT" as const };
+    return { medicineId: item.medicineId, batchId: item.batchId, itemType, sellMode, strips: strips || 1, loose, quantity: item.quantity, unitsPerStrip: unitsPerPackage, stripPrice, perUnitPrice: stripPrice / (isTablet ? unitsPerPackage : 1), sellingPrice: stripPrice, discount: item.discount, discountType: "AMOUNT" as const };
   }) : [emptyLine()]);
   const [invoiceNumber, setInvoiceNumber] = useState(() => initialData?.invoiceNumber ?? generateInvoiceNo(true));
   const [paidAmount, setPaidAmount] = useState<number | "">(initialData?.paidAmount ?? 0);
@@ -238,10 +234,8 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
     const medicine = medicines.find((entry) => entry.id === medicineId);
     const batch = medicine?.batches[0];
     const unitsPerStrip = parseUnitsInStrip(medicine?.packSize);
-    const purchasePrice = batch?.purchasePrice ?? medicine?.purchasePrice ?? 0;
-    const minimumUnitPrice = roundUpToCent(purchasePrice / unitsPerStrip);
-    const stripPrice = Math.max(medicine?.sellingPrice ?? batch?.sellingPrice ?? 0, purchasePrice, minimumUnitPrice * unitsPerStrip);
-    const perUnitPrice = Math.max(roundUpToCent(stripPrice / unitsPerStrip), minimumUnitPrice);
+    const stripPrice = batch?.sellingPrice ?? medicine?.sellingPrice ?? 0;
+    const perUnitPrice = stripPrice / unitsPerStrip;
     const itemType = medicine?.itemType ?? "OTHER";
 
     updateLine(index, {
@@ -264,10 +258,8 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
     const line = lines[index];
     const medicine = medicines.find((m) => m.id === line.medicineId);
     const batch = medicine?.batches.find((b) => b.id === batchId);
-    const purchasePrice = batch?.purchasePrice ?? medicine?.purchasePrice ?? 0;
-    const minimumUnitPrice = roundUpToCent(purchasePrice / (line.unitsPerStrip || 1));
-    const stripPrice = Math.max(medicine?.sellingPrice ?? batch?.sellingPrice ?? line.stripPrice, purchasePrice, minimumUnitPrice * (line.unitsPerStrip || 1));
-    const perUnitPrice = Math.max(roundUpToCent(stripPrice / (line.unitsPerStrip || 1)), minimumUnitPrice);
+    const stripPrice = batch?.sellingPrice ?? medicine?.sellingPrice ?? line.stripPrice;
+    const perUnitPrice = stripPrice / Math.max(1, line.unitsPerStrip || 1);
 
     updateLine(index, {
       batchId,
@@ -371,9 +363,7 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
           strips: line.strips,
           loose: line.loose,
           quantity: line.quantity,
-          sellingPrice: line.itemType === "TABLET" || line.itemType === "CAPSULE"
-            ? Number(((line.sellMode === "LOOSE_TABLET" ? line.perUnitPrice : line.stripPrice / (line.unitsPerStrip || 1))).toFixed(2))
-            : line.stripPrice,
+          sellingPrice: line.itemType === "TABLET" || line.itemType === "CAPSULE" ? line.perUnitPrice : line.stripPrice,
           discount: getLineDiscountAmount(line, medicines),
         };
       }),
@@ -553,8 +543,6 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
             const lineDiscount = getLineDiscountAmount(line, medicines);
             const lineNet = Math.max(0, lineSubtotal - lineDiscount);
             const batch = medicine?.batches.find((entry) => entry.id === line.batchId);
-            const purchasePricePerPack = batch?.purchasePrice ?? medicine?.purchasePrice ?? 0;
-            const purchasePricePerUnit = purchasePricePerPack / (isTablet ? Math.max(1, line.unitsPerStrip) : 1);
             const maximumDiscount = getLineMaxDiscountAmount(line, medicines);
             const maximumDiscountInput = line.discountType === "PERCENTAGE"
               ? (lineSubtotal > 0 ? maximumDiscount / lineSubtotal * 100 : 0)
@@ -710,10 +698,10 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
                     <div className="space-y-0.5">
                       <Input
                         type="number"
-                        min={roundUpToCent(purchasePricePerUnit)}
                         step="0.01"
-                        value={line.perUnitPrice || ""}
-                        onChange={(e) => updateLine(index, { perUnitPrice: Number(e.target.value) })}
+                        value={line.perUnitPrice || 0}
+                        readOnly
+                        aria-label="Selling price per tablet"
                         className={`h-8 text-right text-xs font-mono ${noSpinnerClass}`}
                         required
                       />
@@ -724,10 +712,10 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
                     <div className="space-y-0.5">
                       <Input
                         type="number"
-                        min={Math.max(purchasePricePerPack, roundUpToCent(purchasePricePerUnit) * (isTablet ? line.unitsPerStrip : 1))}
                         step="0.01"
-                        value={line.stripPrice || ""}
-                        onChange={(e) => updateLine(index, { stripPrice: Number(e.target.value) })}
+                        value={line.stripPrice || 0}
+                        readOnly
+                        aria-label="Selling price per pack"
                         className={`h-8 text-right text-xs font-mono ${noSpinnerClass}`}
                         required
                       />

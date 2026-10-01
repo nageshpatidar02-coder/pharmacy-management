@@ -101,7 +101,11 @@ export async function createPurchase(userId: string, input: unknown) {
           });
 
       await tx.purchaseItem.create({ data: { purchaseId: purchase.id, medicineId: medicine.id, batchId: savedBatch.id, expiryDate: item.expiryDate, quantity: item.quantity, freeQuantity: item.freeQuantity, purchaseRate: item.purchaseRate, mrp: item.mrp, sellingPrice: item.sellingPrice, discount: totals.lines[index].discount, gstPercentage: item.gstPercentage, lineTotal: totals.lines[index].lineTotal } });
-      await tx.medicine.update({ where: { id: medicine.id }, data: { purchasePrice: item.purchaseRate, mrp: item.mrp, sellingPrice: item.sellingPrice } });
+      await tx.pharmacyMedicineConfig.upsert({
+        where: { pharmacyId_medicineId: { pharmacyId, medicineId: medicine.id } },
+        create: { pharmacyId, medicineId: medicine.id, baseUnit: medicine.unit, purchasePrice: item.purchaseRate, mrp: item.mrp, sellingPrice: item.sellingPrice },
+        update: { purchasePrice: item.purchaseRate, mrp: item.mrp, sellingPrice: item.sellingPrice },
+      });
       await tx.stockLedger.create({ data: { pharmacyId, medicineId: medicine.id, batchId: savedBatch.id, previousQuantity: batch?.quantity ?? 0, quantityChange: stockQuantity + stockFreeQuantity, newQuantity: nextQuantity + nextFree, reason: "PURCHASE", reference: purchase.id, userId: persistedUserId } });
     }
 
@@ -168,7 +172,11 @@ export async function updatePurchase(purchaseId: string, input: unknown) {
         ? await tx.batch.update({ where: { id: batch.id }, data: { expiryDate: item.expiryDate, purchasePrice: item.purchaseRate, mrp: item.mrp, sellingPrice: item.sellingPrice, quantity: nextQuantity, freeQuantity: nextFree } })
         : await tx.batch.create({ data: { pharmacyId, medicineId: medicine.id, batchNumber: item.batchNumber, manufacturingDate: new Date(), expiryDate: item.expiryDate, purchasePrice: item.purchaseRate, mrp: item.mrp, sellingPrice: item.sellingPrice, quantity: stockQuantity, freeQuantity: stockFreeQuantity } });
       await tx.purchaseItem.create({ data: { purchaseId: purchase.id, medicineId: medicine.id, batchId: savedBatch.id, expiryDate: item.expiryDate, quantity: item.quantity, freeQuantity: item.freeQuantity, purchaseRate: item.purchaseRate, mrp: item.mrp, sellingPrice: item.sellingPrice, discount: totals.lines[index].discount, gstPercentage: item.gstPercentage, lineTotal: totals.lines[index].lineTotal } });
-      await tx.medicine.update({ where: { id: medicine.id }, data: { purchasePrice: item.purchaseRate, mrp: item.mrp, sellingPrice: item.sellingPrice } });
+      await tx.pharmacyMedicineConfig.upsert({
+        where: { pharmacyId_medicineId: { pharmacyId, medicineId: medicine.id } },
+        create: { pharmacyId, medicineId: medicine.id, baseUnit: medicine.unit, purchasePrice: item.purchaseRate, mrp: item.mrp, sellingPrice: item.sellingPrice },
+        update: { purchasePrice: item.purchaseRate, mrp: item.mrp, sellingPrice: item.sellingPrice },
+      });
       await tx.stockLedger.create({ data: { pharmacyId, medicineId: medicine.id, batchId: savedBatch.id, previousQuantity: batch ? batch.quantity + batch.freeQuantity : 0, quantityChange: stockQuantity + stockFreeQuantity, newQuantity: nextQuantity + nextFree, reason: "PURCHASE_EDIT", reference: purchase.id, userId: user.id === "temporary-admin" ? undefined : user.id } });
     }
 

@@ -5,9 +5,13 @@ import { saleSchema } from "@/lib/validations/sale";
 function unitsPerPack(packSize: string | null | undefined) { const match = packSize?.match(/\d+/); return match ? Math.max(1, Number(match[0])) : 1; }
 function roundMoney(value: number) { return Math.round((value + Number.EPSILON) * 100) / 100; }
 function floorMoney(value: number) { return Math.floor((value + Number.EPSILON) * 100) / 100; }
-function enforceNoLoss(item: { quantity: number; sellingPrice: number; discount: number }, batch: { purchasePrice: number }, medicine: { itemType: string; packSize: string | null }) {
+function enforceNoLoss(item: { quantity: number; sellingPrice: number; discount: number }, batch: { purchasePrice: number; sellingPrice: number }, medicine: { itemType: string; packSize: string | null }) {
   const packMultiplier = medicine.itemType === "TABLET" || medicine.itemType === "CAPSULE" ? unitsPerPack(medicine.packSize) : 1;
   const purchasePricePerUnit = batch.purchasePrice / packMultiplier;
+  const sellingPricePerUnit = batch.sellingPrice / packMultiplier;
+  if (Math.abs(item.sellingPrice - sellingPricePerUnit) > 0.000001) {
+    throw new Error("Selling price must match the selected batch price.");
+  }
   if (item.sellingPrice + 0.000001 < purchasePricePerUnit) {
     throw new Error(`Selling price cannot be less than purchase price (₹${roundMoney(purchasePricePerUnit).toFixed(2)}).`);
   }

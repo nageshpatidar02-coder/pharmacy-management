@@ -244,6 +244,10 @@ model PharmacyMedicineConfig {
   id              String   @id @default(auto()) @map("_id") @db.ObjectId
   pharmacyId      String   @db.ObjectId
   medicineId      String   @db.ObjectId
+  mrp             Float    @default(0)
+  purchasePrice   Float    @default(0)
+  sellingPrice    Float    @default(0)
+  minimumStock    Int      @default(0)
   baseUnit        String   @default("UNIT")
   tabletsPerStrip Int      @default(1)
   stripsPerBox    Int      @default(1)

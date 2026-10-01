@@ -44,6 +44,10 @@ const purchaseItemSchema = z
   .refine((item) => item.discount <= item.quantity * item.purchaseRate, {
     message: "Line discount cannot exceed the item purchase amount.",
     path: ["discount"],
+  })
+  .refine((item) => item.sellingPrice >= item.purchaseRate, {
+    message: "Selling price cannot be less than purchase price.",
+    path: ["sellingPrice"],
   });
 
 export const purchaseSchema = z.object({

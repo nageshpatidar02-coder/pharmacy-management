@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
 import { PurchaseForm } from "@/components/purchases/purchase-form";
 import { requirePermission, PERMISSIONS } from "@/server/auth/permissions";
+import { attachPharmacyPrices } from "@/server/services/medicine.service";
 import { prisma } from "@/server/db/prisma";
 
 export default async function EditPurchasePage({ params }: { params: Promise<{ id: string }> }) {
@@ -12,11 +13,12 @@ export default async function EditPurchasePage({ params }: { params: Promise<{ i
   if (!purchase) notFound();
 
   const medicineIds = [...new Set(purchase.items.map((item) => item.medicineId))];
-  const [suppliers, medicines, batches] = await Promise.all([
+  const [suppliers, medicineCatalog, batches] = await Promise.all([
     prisma.supplier.findMany({ where: { pharmacyId: user.pharmacyId, status: "ACTIVE" }, select: { id: true, businessName: true }, orderBy: { businessName: "asc" } }),
-    prisma.medicine.findMany({ where: { OR: [{ active: true }, { id: { in: medicineIds } }] }, select: { id: true, name: true, barcode: true, itemType: true, purchasePrice: true, mrp: true, sellingPrice: true, gstPercentage: true }, orderBy: { name: "asc" } }),
+    prisma.medicine.findMany({ where: { OR: [{ active: true }, { id: { in: medicineIds } }] }, select: { id: true, name: true, barcode: true, itemType: true, gstPercentage: true }, orderBy: { name: "asc" } }),
     prisma.batch.findMany({ where: { id: { in: purchase.items.map((item) => item.batchId) }, pharmacyId: user.pharmacyId }, select: { id: true, batchNumber: true } }),
   ]);
+  const medicines = await attachPharmacyPrices(user.pharmacyId, medicineCatalog);
   if (purchase.supplier && !suppliers.some((supplier) => supplier.id === purchase.supplierId)) suppliers.push({ id: purchase.supplier.id, businessName: purchase.supplier.businessName });
   const medicineById = new Map(medicines.map((medicine) => [medicine.id, medicine]));
   const batchById = new Map(batches.map((batch) => [batch.id, batch]));

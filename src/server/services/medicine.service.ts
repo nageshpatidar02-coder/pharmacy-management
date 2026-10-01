@@ -18,7 +18,27 @@ export async function listMedicines(search = "", page = 1, limit = 100) {
     prisma.medicine.findMany({ where, include: { category: true, manufacturer: true, batches: { where: { pharmacyId }, select: { quantity: true, freeQuantity: true, expiryDate: true } } }, orderBy: { name: "asc" }, skip: (safePage - 1) * safeLimit, take: safeLimit }),
     prisma.medicine.count({ where }),
   ]);
-  return { data, total, page: safePage, limit: safeLimit, totalPages: Math.ceil(total / safeLimit) };
+  const pharmacyMedicines = await attachPharmacyPrices(pharmacyId, data);
+  return { data: pharmacyMedicines, total, page: safePage, limit: safeLimit, totalPages: Math.ceil(total / safeLimit) };
+}
+
+export async function attachPharmacyPrices<T extends { id: string }>(pharmacyId: string, medicines: T[]) {
+  if (medicines.length === 0) return medicines.map((medicine) => ({ ...medicine, mrp: 0, purchasePrice: 0, sellingPrice: 0, minimumStock: 0 }));
+  const configs = await prisma.pharmacyMedicineConfig.findMany({
+    where: { pharmacyId, medicineId: { in: medicines.map((medicine) => medicine.id) } },
+    select: { medicineId: true, mrp: true, purchasePrice: true, sellingPrice: true, minimumStock: true },
+  });
+  const configByMedicineId = new Map(configs.map((config) => [config.medicineId, config]));
+  return medicines.map((medicine) => {
+    const config = configByMedicineId.get(medicine.id);
+    return {
+      ...medicine,
+      mrp: config?.mrp ?? 0,
+      purchasePrice: config?.purchasePrice ?? 0,
+      sellingPrice: config?.sellingPrice ?? 0,
+      minimumStock: config?.minimumStock ?? 0,
+    };
+  });
 }
 
 function ensureObjectId(id: string) {
@@ -37,7 +57,18 @@ function medicineData(input: unknown) {
 }
 
 type MedicineData = ReturnType<typeof medicineData>;
-type PersistedMedicineData = Omit<MedicineData, "initialQuantity" | "quantity" | "batchNumber" | "expiryDate">;
+type PersistedMedicineData = Omit<MedicineData, "initialQuantity" | "quantity" | "batchNumber" | "expiryDate" | "mrp" | "purchasePrice" | "sellingPrice" | "minimumStock">;
+function pharmacyPriceData(data: MedicineData) {
+  return { mrp: data.mrp, purchasePrice: data.purchasePrice, sellingPrice: data.sellingPrice, minimumStock: data.minimumStock };
+}
+
+async function savePharmacyMedicineConfig(tx: Parameters<Parameters<typeof runMongoTransaction>[0]>[0], pharmacyId: string, medicineId: string, data: MedicineData) {
+  return tx.pharmacyMedicineConfig.upsert({
+    where: { pharmacyId_medicineId: { pharmacyId, medicineId } },
+    create: { pharmacyId, medicineId, baseUnit: data.unit, ...pharmacyPriceData(data) },
+    update: { baseUnit: data.unit, ...pharmacyPriceData(data) },
+  });
+}
 
 async function validateReferences(data: Pick<MedicineData, "categoryId" | "manufacturerId">) {
   if (data.categoryId) {
@@ -51,7 +82,7 @@ async function validateReferences(data: Pick<MedicineData, "categoryId" | "manuf
 }
 
 function persistedMedicineData(data: MedicineData): PersistedMedicineData {
-  const { initialQuantity: _initialQuantity, quantity: _quantity, batchNumber: _batchNumber, expiryDate: _expiryDate, ...persisted } = data;
+  const { initialQuantity: _initialQuantity, quantity: _quantity, batchNumber: _batchNumber, expiryDate: _expiryDate, mrp: _mrp, purchasePrice: _purchasePrice, sellingPrice: _sellingPrice, minimumStock: _minimumStock, ...persisted } = data;
   return persisted;
 }
 
@@ -73,13 +104,14 @@ export async function createMedicine(input: unknown, userId?: string) {
   if (openingQuantity > 0 && (!batchNumber || !expiryDate)) throw new Error("Batch number and expiry date are required when opening stock is entered.");
   return runMongoTransaction(async (tx) => {
     const medicine = await tx.medicine.create({ data: medicineFields });
+    const config = await savePharmacyMedicineConfig(tx, pharmacyId, medicine.id, data);
     if (openingQuantity > 0) {
       const expiry = new Date(expiryDate!);
       if (Number.isNaN(expiry.getTime()) || expiry <= new Date()) throw new Error("Opening batch expiry must be a future date.");
-      const batch = await tx.batch.create({ data: { pharmacyId, medicineId: medicine.id, batchNumber: batchNumber!, manufacturingDate: new Date(), expiryDate: expiry, purchasePrice: medicine.purchasePrice, mrp: medicine.mrp, sellingPrice: medicine.sellingPrice, quantity: openingQuantity, freeQuantity: 0 } });
+      const batch = await tx.batch.create({ data: { pharmacyId, medicineId: medicine.id, batchNumber: batchNumber!, manufacturingDate: new Date(), expiryDate: expiry, purchasePrice: config.purchasePrice, mrp: config.mrp, sellingPrice: config.sellingPrice, quantity: openingQuantity, freeQuantity: 0 } });
       await tx.stockLedger.create({ data: { pharmacyId, medicineId: medicine.id, batchId: batch.id, previousQuantity: 0, quantityChange: openingQuantity, newQuantity: openingQuantity, reason: "OPENING_STOCK", reference: "MEDICINE_CREATE", userId: userId === "temporary-admin" ? undefined : userId } });
     }
-    return medicine;
+    return { ...medicine, ...pharmacyPriceData(data) };
   });
 }
 
@@ -89,7 +121,10 @@ export async function updateMedicine(id: string, input: unknown, userId?: string
   const rawData = medicineData(input);
   const data = persistedMedicineData(rawData);
   await validateReferences(data);
-  const existing = await prisma.medicine.findUnique({ where: { id } });
+  const [existing, existingConfig] = await Promise.all([
+    prisma.medicine.findUnique({ where: { id } }),
+    prisma.pharmacyMedicineConfig.findUnique({ where: { pharmacyId_medicineId: { pharmacyId, medicineId: id } } }),
+  ]);
   if (!existing) throw new Error("Medicine not found.");
 
   if (data.sku) {
@@ -108,11 +143,12 @@ export async function updateMedicine(id: string, input: unknown, userId?: string
 
   return runMongoTransaction(async (tx) => {
     const updated = await tx.medicine.update({ where: { id }, data });
+    const config = await savePharmacyMedicineConfig(tx, pharmacyId, id, rawData);
     if (rawData.batchNumber && rawData.expiryDate) {
       const expiry = new Date(rawData.expiryDate);
       if (Number.isNaN(expiry.getTime())) throw new Error("Enter a valid batch expiry date.");
       const currentBatch = await tx.batch.findFirst({
-        where: { pharmacyId, medicineId: id, batchNumber: rawData.batchNumber, purchasePrice: updated.purchasePrice },
+        where: { pharmacyId, medicineId: id, batchNumber: rawData.batchNumber, purchasePrice: config.purchasePrice },
       });
       const expiryChanged = !currentBatch || currentBatch.expiryDate.getTime() !== expiry.getTime();
       if (expiryChanged && expiry <= new Date()) {
@@ -134,9 +170,9 @@ export async function updateMedicine(id: string, input: unknown, userId?: string
               batchNumber: rawData.batchNumber,
               manufacturingDate: new Date(),
               expiryDate: expiry,
-              purchasePrice: updated.purchasePrice,
-              mrp: updated.mrp,
-              sellingPrice: updated.sellingPrice,
+              purchasePrice: config.purchasePrice,
+              mrp: config.mrp,
+              sellingPrice: config.sellingPrice,
               quantity: openingQuantity,
               freeQuantity: 0,
             },
@@ -165,12 +201,12 @@ export async function updateMedicine(id: string, input: unknown, userId?: string
         entityId: id,
         userId: userId === "temporary-admin" ? undefined : userId,
         metadata: {
-          before: { name: existing.name, sku: existing.sku, mrp: existing.mrp, sellingPrice: existing.sellingPrice, gstPercentage: existing.gstPercentage, active: existing.active },
-          after: { name: updated.name, sku: updated.sku, mrp: updated.mrp, sellingPrice: updated.sellingPrice, gstPercentage: updated.gstPercentage, active: updated.active },
+          before: { name: existing.name, sku: existing.sku, mrp: existingConfig?.mrp ?? 0, sellingPrice: existingConfig?.sellingPrice ?? 0, gstPercentage: existing.gstPercentage, active: existing.active },
+          after: { name: updated.name, sku: updated.sku, mrp: config.mrp, sellingPrice: config.sellingPrice, gstPercentage: updated.gstPercentage, active: updated.active },
         },
       },
     });
-    return updated;
+    return { ...updated, ...pharmacyPriceData(rawData) };
   });
 }
 
@@ -196,8 +232,15 @@ export async function listManufacturers() { return prisma.manufacturer.findMany(
 export async function listBatches() {
   const { pharmacyId } = await requirePharmacy();
   const batches = await prisma.batch.findMany({ where: { pharmacyId }, orderBy: { expiryDate: "asc" } });
-  const medicines = await prisma.medicine.findMany({ where: { id: { in: batches.map((batch) => batch.medicineId) } } });
-  const medicinesById = new Map(medicines.map((medicine) => [medicine.id, medicine]));
+  const medicines = await prisma.medicine.findMany({
+    where: { id: { in: batches.map((batch) => batch.medicineId) } },
+    include: { pharmacyConfigs: { where: { pharmacyId } } },
+  });
+  const medicinesById = new Map(medicines.map((medicine) => {
+    const { pharmacyConfigs, ...catalog } = medicine;
+    const config = pharmacyConfigs[0];
+    return [medicine.id, { ...catalog, mrp: config?.mrp ?? 0, purchasePrice: config?.purchasePrice ?? 0, sellingPrice: config?.sellingPrice ?? 0, minimumStock: config?.minimumStock ?? 0 }];
+  }));
   return batches.flatMap((batch) => {
     const medicine = medicinesById.get(batch.medicineId);
     return medicine ? [{ ...batch, medicine }] : [];

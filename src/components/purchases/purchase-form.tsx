@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { purchaseSchema } from "@/lib/validations/purchase";
 import { SearchableSelect } from "@/components/shared/searchable-select";
+import { Toast } from "@/components/ui/toast";
 
 // 1. Medicine Type/Category added to prevent Syrup shown as Tablet
 export type MedicineCategory = "TABLET" | "CAPSULE" | "SYRUP" | "INJECTION" | "DROPS" | "OINTMENT" | "EQUIPMENT" | "OTHER";
@@ -33,6 +34,7 @@ type PurchaseLine = {
   purchaseRate: number; 
   mrp: number; 
   sellingPrice: number; 
+  priceWarning?: string;
   discount: number; 
   gstPercentage: number; 
 };
@@ -79,7 +81,14 @@ function formatExpiryMonthYear(value: string) {
 export function PurchaseForm({ suppliers, medicines: initialMedicines, initialData }: { suppliers: Supplier[]; medicines: Medicine[]; initialData?: PurchaseInitialData }) {
   const router = useRouter();
   const [medicinesList] = useState<Medicine[]>(initialMedicines);
-  const [lines, setLines] = useState<PurchaseLine[]>(() => initialData?.items.map((line) => ({ ...line, expiryDate: formatExpiryMonthYear(line.expiryDate) })) ?? [emptyLine()]);
+  const [lines, setLines] = useState<PurchaseLine[]>(() => initialData?.items.map((line) => ({
+    ...line,
+    expiryDate: formatExpiryMonthYear(line.expiryDate),
+    sellingPrice: Math.max(line.sellingPrice, line.purchaseRate),
+    priceWarning: line.sellingPrice < line.purchaseRate
+      ? `Selling price was below purchase rate and has been adjusted to ₹${line.purchaseRate.toFixed(2)}.`
+      : undefined,
+  })) ?? [emptyLine()]);
   const [supplierId, setSupplierId] = useState(initialData?.supplierId ?? "");
   const [invoiceNumber, setInvoiceNumber] = useState(initialData?.invoiceNumber ?? "");
   const [invoiceDate, setInvoiceDate] = useState(initialData?.invoiceDate ?? new Date().toISOString().slice(0, 10));
@@ -91,6 +100,7 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines, initialDa
   const [igst, setIgst] = useState(initialData?.igst ?? 0);
   const [barcode, setBarcode] = useState("");
   const [error, setError] = useState("");
+  const [toastMessage, setToastMessage] = useState("");
   const [pending, setPending] = useState(false);
 
   // Totals Calculation
@@ -118,7 +128,17 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines, initialDa
   const paymentStatus = paidAmount <= 0 ? "UNPAID" : paidAmount >= grandTotal ? "PAID" : "PARTIAL";
 
   function updateLine(index: number, patch: Partial<PurchaseLine>) { 
-    setLines((current) => current.map((line, lineIndex) => lineIndex === index ? { ...line, ...patch } : line)); 
+    const currentLine = lines[index];
+    if (!currentLine) return;
+    const updated = { ...currentLine, ...patch };
+    if (updated.sellingPrice < updated.purchaseRate) {
+      setToastMessage(`Selling price cannot be less than purchase price (₹${updated.purchaseRate.toFixed(2)}). It was adjusted to the purchase price.`);
+      updated.sellingPrice = updated.purchaseRate;
+      updated.priceWarning = `Selling price was below purchase rate and has been adjusted to ₹${updated.purchaseRate.toFixed(2)}.`;
+    } else if (patch.sellingPrice !== undefined || patch.purchaseRate !== undefined) {
+      updated.priceWarning = undefined;
+    }
+    setLines((current) => current.map((line, lineIndex) => lineIndex === index ? updated : line));
   }
 
   // Medicine Selection Logic with Category Preserved
@@ -286,9 +306,12 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines, initialDa
                 <Field label="Batch Number" value={line.batchNumber} onChange={(value) => updateLine(index, { batchNumber: value })} required />
                 <Field label="Quantity (Pcs/Bottles)" value={line.quantity} onChange={(value) => updateLine(index, { quantity: Math.max(1, Math.trunc(Number(value) || 0)) })} type="number" step="1" min="1" required />
                 <Field label="Free Qty (Scheme)" value={line.freeQuantity} onChange={(value) => updateLine(index, { freeQuantity: Math.max(0, Math.trunc(Number(value) || 0)) })} type="number" step="1" min="0" />
-                <Field label="Purchase Rate" value={line.purchaseRate} onChange={(value) => updateLine(index, { purchaseRate: Math.max(0, Number(value) || 0) })} type="number" required />
-                <Field label="MRP" value={line.mrp} onChange={(value) => updateLine(index, { mrp: Math.max(0, Number(value) || 0) })} type="number" required />
-                <Field label="Selling Price" value={line.sellingPrice} onChange={(value) => updateLine(index, { sellingPrice: Math.max(0, Number(value) || 0) })} type="number" required />
+                <Field label="Purchase Rate" value={line.purchaseRate} onChange={(value) => updateLine(index, { purchaseRate: Math.max(0, Number(value) || 0) })} type="number" step="0.01" required />
+                <Field label="MRP" value={line.mrp} onChange={(value) => updateLine(index, { mrp: Math.max(0, Number(value) || 0) })} type="number" step="0.01" required />
+                <div>
+                  <Field label="Selling Price" value={line.sellingPrice} onChange={(value) => updateLine(index, { sellingPrice: Math.max(0, Number(value) || 0) })} type="number" step="0.01" min={String(line.purchaseRate)} required />
+                  {line.priceWarning ? <p role="status" className="mt-1 text-xs text-amber-700">{line.priceWarning}</p> : null}
+                </div>
                 <Field label="Discount (Rs)" value={Math.min(line.discount, line.quantity * line.purchaseRate)} onChange={(value) => updateLine(index, { discount: Math.min(line.quantity * line.purchaseRate, Math.max(0, Number(value) || 0)) })} type="number" min="0" max={line.quantity * line.purchaseRate} />
                 <Field label="GST %" value={line.gstPercentage} onChange={(value) => updateLine(index, { gstPercentage: Math.min(100, Math.max(0, Number(value) || 0)) })} type="number" />
                 <Field label="Expiry Month / Year" value={line.expiryDate} onChange={(value) => updateLine(index, { expiryDate: formatExpiryMonthYear(value) })} type="text" inputMode="numeric" maxLength={5} placeholder="MM/YY" required />
@@ -367,6 +390,7 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines, initialDa
       </Button>
 
       {error && <p role="alert" className="text-sm text-red-600 font-medium">{error}</p>}
+      {toastMessage ? <Toast message={toastMessage} onDismiss={() => setToastMessage("")} /> : null}
     </form>
   );
 }

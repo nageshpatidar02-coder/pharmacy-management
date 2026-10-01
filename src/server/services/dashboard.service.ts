@@ -3,6 +3,7 @@ import "server-only";
 import { sanitizeSensitiveError } from "@/lib/errors/sanitize-sensitive";
 import { prisma } from "@/server/db/prisma";
 import { requirePharmacy } from "@/server/auth/auth";
+import { attachPharmacyPrices } from "@/server/services/medicine.service";
 
 export type DashboardActivity = {
   title: string;
@@ -75,10 +76,11 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
       }),
     ]);
 
-    const batchMedicines = await prisma.medicine.findMany({
+    const medicineCatalog = await prisma.medicine.findMany({
       where: { id: { in: batches.map((batch) => batch.medicineId) } },
       select: { id: true, active: true, itemType: true, unit: true, packSize: true, minimumStock: true },
     });
+    const batchMedicines = await attachPharmacyPrices(pharmacyId, medicineCatalog);
     const medicinesById = new Map(batchMedicines.map((medicine) => [medicine.id, medicine]));
     const activeBatches = batches.flatMap((batch) => {
       const medicine = medicinesById.get(batch.medicineId);

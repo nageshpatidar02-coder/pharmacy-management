@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma, runMongoTransaction } from "@/server/db/prisma";
 import { requirePharmacy } from "@/server/auth/auth";
+import { attachPharmacyPrices } from "@/server/services/medicine.service";
 import { stockAdjustmentSchema } from "@/lib/validations/medicine";
 
 export async function getInventorySummary(search = "") {
@@ -31,10 +32,11 @@ export async function getInventorySummary(search = "") {
     },
     orderBy: { expiryDate: "asc" },
   });
-  const medicines = await prisma.medicine.findMany({
+  const medicineCatalog = await prisma.medicine.findMany({
     where: { id: { in: batches.map((batch) => batch.medicineId) } },
     select: medicineSelect,
   });
+  const medicines = await attachPharmacyPrices(pharmacyId, medicineCatalog);
   const medicinesById = new Map(medicines.map((medicine) => [medicine.id, medicine]));
   const validBatches = batches.flatMap((batch) => {
     const medicine = medicinesById.get(batch.medicineId);

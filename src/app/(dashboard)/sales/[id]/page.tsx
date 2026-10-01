@@ -21,7 +21,7 @@ export default async function SaleDetailPage({ params }: { params: Promise<{ id:
   const canManage = user.role.name === "SUPER_ADMIN" || user.role.permissions.some(({ permission }) => permission.key === PERMISSIONS.salesCreate);
 
   const [batches, medicines, settings] = await Promise.all([
-    prisma.batch.findMany({ where: { id: { in: sale.items.map((item) => item.batchId) } } }),
+      prisma.batch.findMany({ where: { id: { in: sale.items.map((item) => item.batchId) }, pharmacyId: user.pharmacyId } }),
     prisma.medicine.findMany({
       where: { id: { in: sale.items.map((item) => item.medicineId) } },
       include: { category: true, manufacturer: true },
