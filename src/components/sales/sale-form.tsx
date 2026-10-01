@@ -46,7 +46,7 @@ type Line = {
   perUnitPrice: number;
   sellingPrice: number;
   discount: number;
-  discountType: "AMOUNT" | "PERCENTAGE";
+  discountType: "AMOUNT";
 };
 
 type SaleInitialData = {
@@ -101,10 +101,7 @@ function getLineMaxDiscountAmount(line: Line, medicines: Medicine[]) {
 
 function getLineDiscountAmount(line: Line, medicines: Medicine[]) {
   const value = Math.max(0, line.discount || 0);
-  const requestedAmount = line.discountType === "PERCENTAGE"
-    ? roundMoney(getLineSubtotal(line) * value / 100)
-    : roundMoney(value);
-  return Math.min(requestedAmount, getLineMaxDiscountAmount(line, medicines));
+  return Math.min(roundMoney(value), getLineMaxDiscountAmount(line, medicines));
 }
 
 function normalizeSaleLine(line: Line, changes: Partial<Line>, medicines: Medicine[]) {
@@ -127,12 +124,9 @@ function normalizeSaleLine(line: Line, changes: Partial<Line>, medicines: Medici
 
   const gross = getLineSubtotal(updated);
   const maxDiscountAmount = floorMoney(Math.max(0, gross - updated.quantity * purchasePricePerUnit));
-  const maxDiscountValue = updated.discountType === "PERCENTAGE"
-    ? (gross > 0 ? maxDiscountAmount / gross * 100 : 0)
-    : maxDiscountAmount;
   const requestedDiscount = Math.max(0, Number(updated.discount) || 0);
-  const discountWasCapped = requestedDiscount > maxDiscountValue;
-  updated.discount = Math.min(updated.discountType === "AMOUNT" ? roundMoney(requestedDiscount) : requestedDiscount, maxDiscountValue);
+  const discountWasCapped = requestedDiscount > maxDiscountAmount;
+  updated.discount = Math.min(roundMoney(requestedDiscount), maxDiscountAmount);
 
   return { line: updated, requestedRateBelowCost, discountWasCapped, maxDiscountAmount, purchasePricePerUnit };
 }
@@ -530,7 +524,7 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
           <span className="col-span-2 text-center">QUANTITY / MODE</span>
           <span className="col-span-1 text-center">TOTAL QTY</span>
           <span className="col-span-1 text-right">PRICE</span>
-          <span className="col-span-1 text-right">DISCOUNT</span>
+          <span className="col-span-1 text-right">DISCOUNT (₹)</span>
           <span className="col-span-2 text-right pr-2">NET TOTAL</span>
         </div>
 
@@ -544,10 +538,6 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
             const lineNet = Math.max(0, lineSubtotal - lineDiscount);
             const batch = medicine?.batches.find((entry) => entry.id === line.batchId);
             const maximumDiscount = getLineMaxDiscountAmount(line, medicines);
-            const maximumDiscountInput = line.discountType === "PERCENTAGE"
-              ? (lineSubtotal > 0 ? maximumDiscount / lineSubtotal * 100 : 0)
-              : maximumDiscount;
-
             return (
               <div
                 key={index}
@@ -729,28 +719,18 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
 
                 {/* Discount */}
                 <div className="md:col-span-1">
-                  <label className="text-[10px] font-semibold text-muted-foreground md:hidden">Discount</label>
-                  <div className="space-y-1">
-                    <select
-                      aria-label="Discount type"
-                      value={line.discountType}
-                      onChange={(event) => updateLine(index, { discountType: event.target.value as Line["discountType"] })}
-                      className="h-7 w-full rounded-md border bg-background px-1 text-[10px]"
-                    >
-                      <option value="AMOUNT">Amount ₹</option>
-                      <option value="PERCENTAGE">Percent %</option>
-                    </select>
-                    <Input
-                      type="number"
-                      min="0"
-                      max={maximumDiscountInput}
-                      step="0.01"
-                      value={line.discount || ""}
-                      onChange={(event) => updateLine(index, { discount: Number(event.target.value) || 0 })}
-                      placeholder="0.00"
-                      className={`h-8 text-right text-xs font-mono ${noSpinnerClass}`}
-                    />
-                  </div>
+                  <label className="text-[10px] font-semibold text-muted-foreground md:hidden">Discount (₹)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max={maximumDiscount}
+                    step="0.01"
+                    value={line.discount || ""}
+                    onChange={(event) => updateLine(index, { discount: Number(event.target.value) || 0 })}
+                    placeholder="0.00"
+                    aria-label="Discount amount in rupees"
+                    className={`h-8 text-right text-xs font-mono ${noSpinnerClass}`}
+                  />
                 </div>
 
                 {/* Line Total & Delete */}
