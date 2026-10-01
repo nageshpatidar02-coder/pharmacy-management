@@ -132,7 +132,7 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
     return { medicineId: item.medicineId, batchId: item.batchId, itemType, sellMode, strips: strips || 1, loose, quantity: item.quantity, unitsPerStrip: unitsPerPackage, stripPrice: item.sellingPrice * (isTablet ? unitsPerPackage : 1), perUnitPrice: item.sellingPrice, sellingPrice: item.sellingPrice * (isTablet ? unitsPerPackage : 1), discount: item.discount };
   }) : [emptyLine()]);
   const [invoiceNumber, setInvoiceNumber] = useState(() => initialData?.invoiceNumber ?? generateInvoiceNo(true));
-  const [paidAmount, setPaidAmount] = useState<number | "">(initialData?.paidAmount ?? "");
+  const [paidAmount, setPaidAmount] = useState<number | "">(initialData?.paidAmount ?? 0);
   const [paymentMethod, setPaymentMethod] = useState(initialData?.paymentMethod ?? "CASH");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -277,7 +277,7 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
     const parsed = saleSchema.safeParse({
       customerId,
       invoiceNumber,
-      paidAmount: initialData ? initialData.paidAmount : Number(paidAmount) || summary.netTotal,
+      paidAmount: initialData ? initialData.paidAmount : Number(paidAmount) || 0,
       paymentMethod,
       items: lines.map((line) => {
         const isTablet = line.itemType === "TABLET" || line.itemType === "CAPSULE";
@@ -360,12 +360,13 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
           <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Customer</label>
           <div className="flex gap-2">
             <SearchableSelect
-              options={customerOptions.map((customer) => ({ id: customer.id, label: `${customer.name}${customer.mobile ? ` (${customer.mobile})` : ""}`, searchText: customer.mobile ?? "" }))}
+              options={[{ id: "", label: "Walk-in / Unknown Customer" }, ...customerOptions.map((customer) => ({ id: customer.id, label: `${customer.name}${customer.mobile ? ` (${customer.mobile})` : ""}`, searchText: customer.mobile ?? "" }))]}
               selectedId={customerId}
-              onSelect={(id) => { setCustomerId(id); setInvoiceNumber(generateInvoiceNo(false)); }}
+              onSelect={(id) => { setCustomerId(id); setInvoiceNumber(generateInvoiceNo(!id)); }}
               placeholder="Search customer by name or mobile..."
               emptyMessage="No customer found."
               disabled={Boolean(initialData && (initialData.paymentCount > 0 || initialData.paidAmount > 0))}
+              allowEmptySelection
             />
             <Button
               type="button"

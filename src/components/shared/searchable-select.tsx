@@ -17,6 +17,7 @@ export function SearchableSelect({
   placeholder,
   emptyMessage = "No results found.",
   disabled = false,
+  allowEmptySelection = false,
 }: {
   options: SearchableOption[];
   selectedId: string;
@@ -24,6 +25,7 @@ export function SearchableSelect({
   placeholder: string;
   emptyMessage?: string;
   disabled?: boolean;
+  allowEmptySelection?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -103,7 +105,7 @@ export function SearchableSelect({
         aria-activedescendant={open ? activeOptionId : undefined}
         aria-autocomplete="list"
         autoComplete="off"
-        required={!selectedId}
+        required={!selectedId && !allowEmptySelection}
       />
       {open && (
         <div id={listboxId} role="listbox" className="absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-background shadow-lg">
