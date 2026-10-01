@@ -4,6 +4,7 @@ const log = require("electron-log");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
+const net = require("node:net");
 const path = require("node:path");
 
 const APP_NAME = "PharmaDesk";
@@ -25,7 +26,6 @@ const DATABASE_CONFIG_PATHS = [
   path.join(APP_DATA_PATH, "PharmaDesk", "pharmadesk.json"),
 ];
 const PRISMA_ENGINE_PATH = path.join(process.resourcesPath, "app", "node_modules", ".prisma", "client", "query_engine-windows.dll.node");
-const SERVER_PORT = 3000;
 const ICON_PATH = app.isPackaged
   ? path.join(process.resourcesPath, "app", "public", "icon.ico")
   : path.join(__dirname, "..", "public", "icon.ico");
@@ -89,6 +89,25 @@ function redactSensitiveText(value) {
 function getSafeErrorDetails(error) {
   const details = error instanceof Error ? error.stack || error.message : String(error);
   return redactSensitiveText(details);
+}
+
+function reserveServerPort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close(() => reject(new Error("Unable to reserve a local app port.")));
+        return;
+      }
+
+      server.close((error) => {
+        if (error) reject(error);
+        else resolve(address.port);
+      });
+    });
+  });
 }
 
 function getDatabaseUrl() {
@@ -234,7 +253,7 @@ async function startApplicationServer() {
     process.env.PRISMA_QUERY_ENGINE_LIBRARY = PRISMA_ENGINE_PATH;
   }
 
-  const port = SERVER_PORT;
+  const port = await reserveServerPort();
   const serverUrl = `http://127.0.0.1:${port}`;
   nextServer = spawn(process.execPath, [SERVER_PATH], {
     cwd: path.dirname(SERVER_PATH),
