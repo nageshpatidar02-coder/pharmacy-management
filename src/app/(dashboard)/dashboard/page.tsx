@@ -74,7 +74,7 @@ export default async function Home() {
               Welcome back, {user.name || "Team"}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Your store operations and real-time inventory performance.
+              Your store operations and real-timeinventory performance hrojkwhlkejllhwlikh.
             </p>
           </div>
           <div className="flex gap-2">
