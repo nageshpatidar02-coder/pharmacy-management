@@ -1,31 +1,16 @@
-const { app, BrowserWindow, dialog, ipcMain, Notification } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, Notification, shell } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const log = require("electron-log");
-const { spawn } = require("node:child_process");
 const fs = require("node:fs");
+const https = require("node:https");
 const http = require("node:http");
-const net = require("node:net");
 const path = require("node:path");
 
 const APP_NAME = "PharmaDesk";
 app.setName(APP_NAME);
 
-// Fallback Hardcoded MongoDB URL (Isse kisi bhi PC me config/env error nahi aayegi)
-const HARDCODED_DATABASE_URL =
-  "mongodb+srv://nageshpatidar02_db_user:3LezzlUxHGRnJDzn@cluster0.urr2ueh.mongodb.net/medical_store?retryWrites=true&w=majority";
-
 const START_URL = process.env.ELECTRON_START_URL || "http://localhost:3000";
-const SERVER_PATH = path.join(process.resourcesPath, "app", "server.js");
-const DATABASE_CONFIG_PATH = path.join(app.getPath("userData"), "pharmadesk.json");
-const APP_DATA_PATH = app.getPath("appData");
-const DATABASE_ENV_PATH = path.join(APP_DATA_PATH, "PharmaDesk.env");
-const DATABASE_CONFIG_PATHS = [
-  DATABASE_CONFIG_PATH,
-  path.join(path.dirname(app.getPath("exe")), "pharmadesk.json"),
-  path.join(APP_DATA_PATH, "pharma-desc", "pharmadesk.json"),
-  path.join(APP_DATA_PATH, "PharmaDesk", "pharmadesk.json"),
-];
-const PRISMA_ENGINE_PATH = path.join(process.resourcesPath, "app", "node_modules", ".prisma", "client", "query_engine-windows.dll.node");
+const DEFAULT_CLOUD_APP_URL = "https://pharmacy-management-bay.vercel.app";
 const ICON_PATH = app.isPackaged
   ? path.join(process.resourcesPath, "app", "public", "icon.ico")
   : path.join(__dirname, "..", "public", "icon.ico");
@@ -33,12 +18,10 @@ const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
 log.transports.file.level = "info";
 autoUpdater.logger = log;
-autoUpdater.autoDownload = false;
+autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 
 let mainWindow = null;
-let nextServer = null;
-let lastProgressNotification = 0;
 let updateStatus = {
   state: app.isPackaged ? "checking" : "development",
   message: app.isPackaged ? "Checking for updates..." : "Automatic updates are checked in installed builds.",
@@ -71,13 +54,11 @@ function reportUpdateError(error) {
   if (isNetworkError(error)) {
     log.warn("Update check unavailable; the app will continue offline.", getSafeErrorDetails(error));
     sendUpdateStatus({ state: "offline", message: "Update check unavailable while offline.", percent: 0 });
-    notify("Updates unavailable", "Could not reach the update server. PharmaDesk will continue working.");
     return;
   }
 
   log.error("Auto-update failed", getSafeErrorDetails(error));
   sendUpdateStatus({ state: "error", message: "Unable to check for updates. The app will remain available.", percent: 0 });
-  notify("Update problem", "PharmaDesk could not check or download an update. The app will remain open.");
 }
 
 function redactSensitiveText(value) {
@@ -91,70 +72,13 @@ function getSafeErrorDetails(error) {
   return redactSensitiveText(details);
 }
 
-function reserveServerPort() {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        server.close(() => reject(new Error("Unable to reserve a local app port.")));
-        return;
-      }
-
-      server.close((error) => {
-        if (error) reject(error);
-        else resolve(address.port);
-      });
-    });
-  });
+function getCloudAppUrl() {
+  const appUrl = new URL(process.env.PHARMADESK_WEB_URL?.trim() || DEFAULT_CLOUD_APP_URL);
+  if (appUrl.protocol !== "https:") throw new Error("PHARMADESK_WEB_URL must use HTTPS in packaged builds.");
+  return appUrl.toString().replace(/\/$/, "");
 }
 
-function getDatabaseUrl() {
-  let databaseUrl = process.env.DATABASE_URL?.trim();
-
-  if (!databaseUrl && fs.existsSync(DATABASE_ENV_PATH)) {
-    try {
-      const contents = fs.readFileSync(DATABASE_ENV_PATH, "utf8");
-      for (const line of contents.split(/\r?\n/)) {
-        const match = line.match(/^\s*DATABASE_URL\s*=\s*(.*?)\s*$/);
-        if (!match) continue;
-
-        databaseUrl = match[1].replace(/^(?:"(.*)"|'(.*)')$/, (_quoted, doubleQuoted, singleQuoted) => doubleQuoted ?? singleQuoted).trim();
-        if (databaseUrl) break;
-      }
-    } catch {
-      // Ignore reading error
-    }
-  }
-
-  if (!databaseUrl) {
-    for (const configPath of DATABASE_CONFIG_PATHS) {
-      if (!fs.existsSync(configPath)) continue;
-
-      try {
-        const fileContents = fs.readFileSync(configPath, "utf8");
-        const config = JSON.parse(fileContents);
-        const value = config.DATABASE_URL ?? config.databaseUrl ?? config.database?.url;
-        if (typeof value === "string" && value.trim()) {
-          databaseUrl = value.trim().replace(/^(["'])(.*)\1$/, "$2");
-          break;
-        }
-      } catch {
-        // Ignore parse errors and check next config path
-      }
-    }
-  }
-
-  // Agar external env/json missing ho, to hardcoded MongoDB URL auto-pick kar lo (No error throw)
-  if (!databaseUrl || !/^mongodb(?:\+srv)?:\/\//i.test(databaseUrl)) {
-    databaseUrl = HARDCODED_DATABASE_URL;
-  }
-
-  return databaseUrl;
-}
-
-function waitForServer(url, child, timeoutMs = 45000) {
+function waitForServer(url, child = null, timeoutMs = 45000) {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeoutMs;
     let lastFailure = "No health response received.";
@@ -164,7 +88,7 @@ function waitForServer(url, child, timeoutMs = 45000) {
     function finish(error) {
       clearTimeout(timeout);
       clearTimeout(retryTimer);
-      child.removeListener("error", onChildError);
+      child?.removeListener("error", onChildError);
       if (error) reject(error);
       else resolve();
     }
@@ -174,12 +98,13 @@ function waitForServer(url, child, timeoutMs = 45000) {
     }
 
     function poll() {
-      if (child.exitCode !== null || child.signalCode) {
+      if (child && (child.exitCode !== null || child.signalCode)) {
         finish(new Error(`The local pharmacy server exited (${child.exitCode ?? child.signalCode}).`));
         return;
       }
 
-      const request = http.get(url, (response) => {
+      const requestModule = new URL(url).protocol === "https:" ? https : http;
+      const request = requestModule.get(url, (response) => {
         let body = "";
         response.setEncoding("utf8");
         response.on("data", (chunk) => {
@@ -210,23 +135,8 @@ function waitForServer(url, child, timeoutMs = 45000) {
       });
     }
 
-    child.once("error", onChildError);
+    child?.once("error", onChildError);
     poll();
-  });
-}
-
-function forwardServerOutput(stream, level) {
-  let pending = "";
-  stream.setEncoding("utf8");
-  stream.on("data", (chunk) => {
-    const lines = (pending + chunk).split(/\r?\n/);
-    pending = lines.pop() ?? "";
-    for (const line of lines) {
-      if (line.trim()) log[level]("Next.js server:", redactSensitiveText(line));
-    }
-  });
-  stream.on("end", () => {
-    if (pending.trim()) log[level]("Next.js server:", redactSensitiveText(pending));
   });
 }
 
@@ -234,52 +144,14 @@ async function startApplicationServer() {
   log.info("Starting PharmaDesk", {
     version: app.getVersion(),
     packaged: app.isPackaged,
-    resourcesPath: process.resourcesPath,
-    serverPath: app.isPackaged ? SERVER_PATH : START_URL,
-    databaseUrlConfigured: Boolean(process.env.DATABASE_URL?.trim()),
+    appUrl: app.isPackaged ? process.env.PHARMADESK_WEB_URL || DEFAULT_CLOUD_APP_URL : START_URL,
   });
 
   if (!app.isPackaged) return START_URL;
-
-  if (!fs.existsSync(SERVER_PATH)) {
-    throw new Error(`Packaged Next.js server was not found at ${SERVER_PATH}. Build the app with npm run build:next.`);
-  }
-
-  const databaseUrl = getDatabaseUrl();
-  process.env.DATABASE_URL = databaseUrl;
-  log.info("Production database configuration loaded", { databaseUrlConfigured: true });
-
-  if (process.platform === "win32" && fs.existsSync(PRISMA_ENGINE_PATH)) {
-    process.env.PRISMA_QUERY_ENGINE_LIBRARY = PRISMA_ENGINE_PATH;
-  }
-
-  const port = await reserveServerPort();
-  const serverUrl = `http://127.0.0.1:${port}`;
-  nextServer = spawn(process.execPath, [SERVER_PATH], {
-    cwd: path.dirname(SERVER_PATH),
-    env: {
-      ...process.env,
-      ELECTRON_RUN_AS_NODE: "1",
-      HOSTNAME: "127.0.0.1",
-      NODE_ENV: "production",
-      NEXT_TELEMETRY_DISABLED: "1",
-      PORT: String(port),
-      DATABASE_URL: databaseUrl,
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-    windowsHide: true,
-  });
-
-  forwardServerOutput(nextServer.stdout, "info");
-  forwardServerOutput(nextServer.stderr, "error");
-
-  nextServer.on("exit", (code) => {
-    if (code && !app.isQuitting) log.error(`Packaged Next.js server exited with code ${code}.`);
-  });
-
-  await waitForServer(`${serverUrl}/api/health`, nextServer);
-  log.info("Packaged Next.js server health check passed", { serverUrl, database: "connected" });
-  return serverUrl;
+  const appUrl = getCloudAppUrl();
+  await waitForServer(new URL("/api/health", appUrl).toString());
+  log.info("Hosted application health check passed", { origin: new URL(appUrl).origin, database: "connected" });
+  return appUrl;
 }
 
 ipcMain.handle("app:get-version", () => app.getVersion());
@@ -289,6 +161,7 @@ ipcMain.on("updater:install", () => {
 });
 
 async function createWindow(url) {
+  const appOrigin = new URL(url).origin;
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -304,6 +177,38 @@ async function createWindow(url) {
 
   mainWindow.once("ready-to-show", () => mainWindow?.show());
   mainWindow.webContents.on("did-finish-load", () => sendUpdateStatus(updateStatus));
+  let clearedLoginUrl = "";
+  const clearLoginStorage = async (_event, navigatedUrl, isMainFrame = true) => {
+    if (!isMainFrame) return;
+    try {
+      const destination = new URL(navigatedUrl);
+      if (destination.origin !== appOrigin || destination.pathname.replace(/\/$/, "") !== "/login") {
+        clearedLoginUrl = "";
+        return;
+      }
+      if (clearedLoginUrl === destination.href) return;
+      clearedLoginUrl = destination.href;
+      await mainWindow?.webContents.session.clearStorageData({
+        storages: ["cookies", "localstorage", "indexdb", "serviceworkers", "cachestorage"],
+      });
+      log.info("Desktop session and web storage cleared on login screen.");
+    } catch (error) {
+      log.warn("Unable to clear desktop session storage.", getSafeErrorDetails(error));
+    }
+  };
+  mainWindow.webContents.on("did-navigate", clearLoginStorage);
+  mainWindow.webContents.on("did-navigate-in-page", clearLoginStorage);
+  mainWindow.webContents.on("will-navigate", (event, navigationUrl) => {
+    if (new URL(navigationUrl).origin !== appOrigin) {
+      event.preventDefault();
+      void shell.openExternal(navigationUrl);
+    }
+  });
+  mainWindow.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
+    if (new URL(targetUrl).origin === appOrigin) return { action: "allow" };
+    void shell.openExternal(targetUrl);
+    return { action: "deny" };
+  });
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -318,83 +223,37 @@ async function createWindow(url) {
       type: "error",
       title: APP_NAME,
       message: "The application could not be opened.",
-      detail: "Check the local app server and restart PharmaDesk.",
+      detail: "Check your internet connection and the hosted app address.",
       buttons: ["Close"],
     });
     mainWindow.close();
   }
 }
 
-async function askToDownloadUpdate(info) {
-  const options = {
-    type: "info",
-    title: APP_NAME,
-    message: `PharmaDesk ${info.version} is available.`,
-    detail: "Would you like to download and install the update?",
-    buttons: ["Download update", "Later"],
-    defaultId: 0,
-    cancelId: 1,
-    noLink: true,
-  };
-  const result = mainWindow
-    ? await dialog.showMessageBox(mainWindow, options)
-    : await dialog.showMessageBox(options);
-
-  if (result.response === 0) {
-    lastProgressNotification = 0;
-    try {
-      await autoUpdater.downloadUpdate();
-    } catch (error) {
-      reportUpdateError(error);
-    }
-  }
-}
-
-async function askToInstallUpdate() {
-  const options = {
-    type: "info",
-    title: APP_NAME,
-    message: "The update is ready to install.",
-    detail: "Restart PharmaDesk now to finish installing the update?",
-    buttons: ["Restart and install", "Later"],
-    defaultId: 0,
-    cancelId: 1,
-    noLink: true,
-  };
-  const result = mainWindow
-    ? await dialog.showMessageBox(mainWindow, options)
-    : await dialog.showMessageBox(options);
-
-  if (result.response === 0) autoUpdater.quitAndInstall();
-}
-
 autoUpdater.on("checking-for-update", () => {
   sendUpdateStatus({ state: "checking", message: "Checking for updates...", percent: 0 });
-  notify("Checking for updates", "Checking whether a newer version of PharmaDesk is available.");
 });
 
 autoUpdater.on("update-available", (info) => {
+  const availableVersion = String(info.version ?? "").replace(/^v/i, "");
+  if (availableVersion === app.getVersion().replace(/^v/i, "")) {
+    sendUpdateStatus({ state: "up-to-date", message: "App is up to date.", percent: 0 });
+    return;
+  }
   sendUpdateStatus({ state: "available", message: `Version ${info.version} is available to download.`, version: info.version, percent: 0 });
-  void askToDownloadUpdate(info).catch(reportUpdateError);
 });
 
 autoUpdater.on("update-not-available", () => {
   sendUpdateStatus({ state: "up-to-date", message: "App is up to date.", percent: 0 });
-  notify("Up to date", "You are using the latest version of PharmaDesk.");
 });
 
 autoUpdater.on("download-progress", (progress) => {
   sendUpdateStatus({ state: "downloading", message: "Downloading update...", percent: Math.round(progress.percent) });
-  const milestone = Math.floor(progress.percent / 25) * 25;
-  if (milestone >= 25 && milestone > lastProgressNotification && milestone < 100) {
-    lastProgressNotification = milestone;
-    notify("Downloading update", `${milestone}% downloaded`);
-  }
 });
 
 autoUpdater.on("update-downloaded", () => {
-  sendUpdateStatus({ state: "downloaded", message: "Restart to apply update.", percent: 100 });
-  void askToInstallUpdate().catch(reportUpdateError);
+  sendUpdateStatus({ state: "downloaded", message: "New version ready. Restart to apply.", percent: 100 });
+  notify("New version ready", "Restart to apply.");
 });
 
 autoUpdater.on("error", reportUpdateError);
@@ -403,10 +262,7 @@ if (!gotSingleInstanceLock) {
   app.quit();
 } else {
   app.isQuitting = false;
-  app.on("before-quit", () => {
-    app.isQuitting = true;
-    if (nextServer && !nextServer.killed) nextServer.kill();
-  });
+  app.on("before-quit", () => { app.isQuitting = true; });
 
   app.on("second-instance", () => {
     if (!mainWindow) return;

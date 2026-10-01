@@ -1,6 +1,6 @@
 {
   "name": "pharma-desc",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
   "description": "Pharma Desc desktop application",
   "main": "electron/main.js",

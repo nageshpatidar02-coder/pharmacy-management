@@ -1,14 +1,12 @@
 # PharmaDesk Windows Deployment
 
-## Runtime database configuration
+## Hosted app and database configuration
 
-The installed application reads `DATABASE_URL` from the process environment or `%APPDATA%\PharmaDesk.env`. Create that file for the Windows user who runs PharmaDesk:
+Installed Electron clients load the hosted PharmaDesk app at `https://pharmacy-management-bay.vercel.app` by default. They use its same-origin API, so Vercel is the only runtime that connects directly to MongoDB. Set `PHARMADESK_WEB_URL` to another HTTPS deployment when preparing a staging or alternate production build.
 
-```dotenv
-DATABASE_URL=mongodb+srv://<database-user>:<encoded-password>@<cluster>/<database>?retryWrites=true&w=majority
-```
+Configure `DATABASE_URL` as a protected environment variable in the Vercel project. Do not put it in the Electron installer, client environment files, source code, or GitHub. The desktop log records only whether the hosted health endpoint reports a successful database ping; database URI credentials are redacted from errors.
 
-Do not commit this file or place production credentials in `.env`, source code, the installer, or GitHub. Existing external `pharmadesk.json` configurations are still read for compatibility. The app log is written under the PharmaDesk user-data directory and redacts URI credentials.
+The MongoDB credential previously present in source must be rotated in MongoDB Atlas and updated in Vercel before releasing this build. If it was pushed to a remote Git repository, treat it as compromised even after removing it from the current source.
 
 ## Build and verify
 
@@ -43,4 +41,4 @@ The GitHub provider remains configured in `package.json`; no token is stored in 
 
 ## Clean Windows PC test
 
-Install `PharmaDesk Setup.exe` on a Windows PC without Node.js or this repository. Configure `%APPDATA%\PharmaDesk.env` with a valid MongoDB URL, start PharmaDesk, and confirm the log records a successful `/api/health` check. Verify login using an existing seeded account, then exercise inventory, purchases, sales, and reporting APIs. This external-PC test is separate from the build-time offline smoke test, which deliberately checks Prisma module loading without requiring a production database credential.
+Install `PharmaDesk Setup.exe` on a Windows PC without Node.js or this repository. Confirm the app reaches the hosted `/api/health` endpoint and logs a successful cloud database check, sign in with an existing account, then exercise inventory, purchases, sales, and reporting. This external-PC test is separate from the build-time standalone smoke test, which deliberately checks local server and Prisma module loading using a dummy unreachable MongoDB URL.

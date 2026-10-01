@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     await createSession(user.id);
     return NextResponse.json({ ok: true, redirectTo: "/dashboard" });
   } catch (error) {
-    console.error("API login failed", sanitizeSensitiveError(error));
-    return NextResponse.json({ ok: false, error: "Database is unavailable. Check the MongoDB configuration and restart PharmaDesk." }, { status: 503 });
+    console.error("API login failed during cloud database lookup or session creation", sanitizeSensitiveError(error));
+    return NextResponse.json({ ok: false, error: "Cloud database is unavailable. Please try again later." }, { status: 503 });
   }
 }
