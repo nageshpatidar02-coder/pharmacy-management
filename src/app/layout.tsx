@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "localhost",
+  title: "PharmaDesk",
   description: "A focused operations workspace for a single-store pharmacy.",
 };
 
