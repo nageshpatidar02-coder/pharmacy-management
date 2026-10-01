@@ -5,9 +5,12 @@ const purchaseItemSchema = z
     medicineId: z.string().min(1, "Medicine select karein"),
     batchNumber: z.string().trim().min(1, "Batch number zaroori hai").max(80),
     manufacturingDate: z.coerce.date().optional(), // 1. Optional kar diya
-    expiryDate: z.coerce.date({
-      error: "Expiry date zaroori hai",
-    }),
+    expiryDate: z.preprocess((value) => {
+      if (typeof value !== "string") return value;
+      const month = value.match(/^(\d{4})-(0[1-9]|1[0-2])$/);
+      if (!month) return value;
+      return new Date(Date.UTC(Number(month[1]), Number(month[2]), 0, 23, 59, 59, 999));
+    }, z.coerce.date({ error: "Expiry month aur year zaroori hai" })),
     quantity: z.coerce.number().int().positive("Quantity 1 ya usse zyada honi chahiye"),
     freeQuantity: z.coerce.number().int().min(0).default(0),
     purchaseRate: z.coerce.number().finite().nonnegative(),

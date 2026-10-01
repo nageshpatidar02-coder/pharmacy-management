@@ -196,5 +196,14 @@ export async function deleteMedicine(id: string) {
 }
 export async function listCategories() { return prisma.category.findMany({ where:  { active: true }, orderBy: { name: "asc" } }); }
 export async function listManufacturers() { return prisma.manufacturer.findMany({ where: { active: true }, orderBy: { name: "asc" } }); }
-export async function listBatches() { const { pharmacyId } = await requirePharmacy(); return prisma.batch.findMany({ where: { pharmacyId }, include: { medicine: true }, orderBy: { expiryDate: "asc" } }); }
+export async function listBatches() {
+  const { pharmacyId } = await requirePharmacy();
+  const batches = await prisma.batch.findMany({ where: { pharmacyId }, orderBy: { expiryDate: "asc" } });
+  const medicines = await prisma.medicine.findMany({ where: { id: { in: batches.map((batch) => batch.medicineId) } } });
+  const medicinesById = new Map(medicines.map((medicine) => [medicine.id, medicine]));
+  return batches.flatMap((batch) => {
+    const medicine = medicinesById.get(batch.medicineId);
+    return medicine ? [{ ...batch, medicine }] : [];
+  });
+}
 export { categorySchema, manufacturerSchema, batchSchema };

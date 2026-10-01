@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
   Activity, 
@@ -45,12 +45,8 @@ type ShellUser = { name: string; email: string; role: { name: string } };
 export function AppShell({ children, user }: { children: React.ReactNode; user: ShellUser }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
-
-  // Route change hone par mobile sidebar auto-close ho jaye
-  useEffect(() => {
-    setSidebarOpen(false);
-  }, [pathname]);
 
   // Active state matching function (Parent + Child routes support)
   const isRouteActive = (href: string) => {
@@ -80,7 +76,7 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
       >
         {/* Brand Logo */}
         <div className="flex h-20 items-center justify-between border-b px-6">
-          <Link href="/dashboard" className="flex items-center gap-3">
+          <Link href="/dashboard" onClick={() => setSidebarOpen(false)} onMouseEnter={() => router.prefetch("/dashboard")} onFocus={() => router.prefetch("/dashboard")} className="flex items-center gap-3">
             <span className="rounded-lg bg-primary p-2 text-primary-foreground shadow-xs">
               <Pill className="size-5" />
             </span>
@@ -110,6 +106,9 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
               <Link 
                 key={label} 
                 href={href} 
+                onClick={() => setSidebarOpen(false)}
+                onMouseEnter={() => router.prefetch(href)}
+                onFocus={() => router.prefetch(href)}
                 className={cn(
                   "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
                   active 
@@ -144,6 +143,9 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
         <div className="space-y-3 border-t p-4">
           <Link 
             href="/settings" 
+            onClick={() => setSidebarOpen(false)}
+            onMouseEnter={() => router.prefetch("/settings")}
+            onFocus={() => router.prefetch("/settings")}
             className={cn(
               "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
               isRouteActive("/settings") 
@@ -183,7 +185,7 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
 
             {/* Breadcrumb Navigation */}
             <nav aria-label="Breadcrumb" className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex">
-              <Link href="/dashboard" className="hover:text-foreground">Dashboard</Link>
+              <Link href="/dashboard" onClick={() => setSidebarOpen(false)} onMouseEnter={() => router.prefetch("/dashboard")} onFocus={() => router.prefetch("/dashboard")} className="hover:text-foreground">Dashboard</Link>
               {pathname !== "/dashboard" && pathname !== "/" && (
                 <>
                   <span>/</span>

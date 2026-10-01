@@ -7,10 +7,42 @@ import { stockAdjustmentSchema } from "@/lib/validations/medicine";
 export async function getInventorySummary(search = "") {
   const { pharmacyId } = await requirePharmacy();
   const term = search.trim();
-  const [batches, settings] = await Promise.all([prisma.batch.findMany({ where: { pharmacyId, ...(term ? { OR: [{ batchNumber: { contains: term, mode: "insensitive" } }, { medicine: { name: { contains: term, mode: "insensitive" } } }, { medicine: { genericName: { contains: term, mode: "insensitive" } } }] } : {}) }, include: { medicine: true }, orderBy: { expiryDate: "asc" } }), prisma.pharmacySettings.findUnique({ where: { pharmacyId } })]);
+  const medicineSelect = { id: true, name: true, genericName: true, itemType: true, unit: true, packSize: true, minimumStock: true, active: true } as const;
+  const [matchingMedicines, settings] = await Promise.all([
+    term
+      ? prisma.medicine.findMany({
+          where: { OR: [{ name: { contains: term, mode: "insensitive" } }, { genericName: { contains: term, mode: "insensitive" } }] },
+          select: medicineSelect,
+        })
+      : Promise.resolve(null),
+    prisma.pharmacySettings.findUnique({ where: { pharmacyId } }),
+  ]);
+  const batches = await prisma.batch.findMany({
+    where: {
+      pharmacyId,
+      ...(term
+        ? {
+            OR: [
+              { batchNumber: { contains: term, mode: "insensitive" as const } },
+              { medicineId: { in: (matchingMedicines ?? []).map((medicine) => medicine.id) } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: { expiryDate: "asc" },
+  });
+  const medicines = await prisma.medicine.findMany({
+    where: { id: { in: batches.map((batch) => batch.medicineId) } },
+    select: medicineSelect,
+  });
+  const medicinesById = new Map(medicines.map((medicine) => [medicine.id, medicine]));
+  const validBatches = batches.flatMap((batch) => {
+    const medicine = medicinesById.get(batch.medicineId);
+    return medicine ? [{ ...batch, medicine }] : [];
+  });
   const threshold = settings?.expiryWarningDays ?? 90;
   const now = new Date(); const warningDate = new Date(now.getTime() + threshold * 86400000);
-  return { batches, threshold, totalStock: batches.reduce((sum, batch) => sum + batch.quantity + batch.freeQuantity, 0), stockValue: batches.reduce((sum, batch) => sum + batch.quantity * batch.purchasePrice, 0), lowStock: batches.filter((batch) => batch.quantity + batch.freeQuantity <= batch.medicine.minimumStock), expired: batches.filter((batch) => batch.expiryDate < now), nearExpiry: batches.filter((batch) => batch.expiryDate >= now && batch.expiryDate <= warningDate) };
+  return { batches: validBatches, threshold, totalStock: validBatches.reduce((sum, batch) => sum + batch.quantity + batch.freeQuantity, 0), stockValue: validBatches.reduce((sum, batch) => sum + batch.quantity * batch.purchasePrice, 0), lowStock: validBatches.filter((batch) => batch.quantity + batch.freeQuantity <= batch.medicine.minimumStock), expired: validBatches.filter((batch) => batch.expiryDate < now), nearExpiry: validBatches.filter((batch) => batch.expiryDate >= now && batch.expiryDate <= warningDate) };
 }
 
 export async function adjustStock(input: unknown, userId: string) {

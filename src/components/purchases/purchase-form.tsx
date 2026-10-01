@@ -279,7 +279,7 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines, initialDa
                 <Field label="Selling Price" value={line.sellingPrice} onChange={(value) => updateLine(index, { sellingPrice: Math.max(0, Number(value) || 0) })} type="number" required />
                 <Field label="Discount (Rs)" value={line.discount} onChange={(value) => updateLine(index, { discount: Math.max(0, Number(value) || 0) })} type="number" />
                 <Field label="GST %" value={line.gstPercentage} onChange={(value) => updateLine(index, { gstPercentage: Math.min(100, Math.max(0, Number(value) || 0)) })} type="number" />
-                <Field label="Expiry Date" value={line.expiryDate} onChange={(value) => updateLine(index, { expiryDate: value })} type="date" required />
+                <Field label="Expiry Month / Year" value={line.expiryDate} onChange={(value) => updateLine(index, { expiryDate: value })} type="month" required />
                 
                 <div className="flex items-end justify-between gap-2 text-sm md:col-span-4 border-t pt-2">
                   <span>Line Total: <strong className="text-base">{money(lineTotal).toFixed(2)}</strong></span>

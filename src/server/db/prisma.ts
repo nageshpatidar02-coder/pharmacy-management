@@ -2,6 +2,10 @@ import "server-only";
 
 import { PrismaClient } from "@prisma/client";
 
+// Hardcoded Fallback URL agar env variables load nahi hote hain
+const HARDCODED_DATABASE_URL =
+  "mongodb+srv://nageshpatidar02_db_user:3LezzlUxHGRnJDzn@cluster0.urr2ueh.mongodb.net/medical_store?retryWrites=true&w=majority";
+
 type PrismaGlobal = typeof globalThis & {
   prisma?: PrismaClient;
 };
@@ -11,12 +15,15 @@ const globalForPrisma = globalThis as PrismaGlobal;
 function getPrismaClient() {
   if (globalForPrisma.prisma) return globalForPrisma.prisma;
 
-  const databaseUrl = process.env.DATABASE_URL?.trim();
+  // Pehle env variable check karein, agar empty/missing ho to hardcoded fallback URL use karein
+  let databaseUrl = process.env.DATABASE_URL?.trim();
+
   if (!databaseUrl) {
-    throw new Error("Missing DATABASE_URL. Configure a MongoDB URL in the app environment or user config.");
+    databaseUrl = HARDCODED_DATABASE_URL;
   }
+
   if (!/^mongodb(?:\+srv)?:\/\//i.test(databaseUrl)) {
-    throw new Error("This Prisma schema uses MongoDB; DATABASE_URL must start with mongodb:// or mongodb+srv://.");
+    databaseUrl = HARDCODED_DATABASE_URL;
   }
 
   const client = new PrismaClient({

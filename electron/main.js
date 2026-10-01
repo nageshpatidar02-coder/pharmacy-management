@@ -9,6 +9,10 @@ const path = require("node:path");
 const APP_NAME = "PharmaDesk";
 app.setName(APP_NAME);
 
+// Fallback Hardcoded MongoDB URL (Isse kisi bhi PC me config/env error nahi aayegi)
+const HARDCODED_DATABASE_URL =
+  "mongodb+srv://nageshpatidar02_db_user:3LezzlUxHGRnJDzn@cluster0.urr2ueh.mongodb.net/medical_store?retryWrites=true&w=majority";
+
 const START_URL = process.env.ELECTRON_START_URL || "http://localhost:3000";
 const SERVER_PATH = path.join(process.resourcesPath, "app", "server.js");
 const DATABASE_CONFIG_PATH = path.join(app.getPath("userData"), "pharmadesk.json");
@@ -91,13 +95,17 @@ function getDatabaseUrl() {
   let databaseUrl = process.env.DATABASE_URL?.trim();
 
   if (!databaseUrl && fs.existsSync(DATABASE_ENV_PATH)) {
-    const contents = fs.readFileSync(DATABASE_ENV_PATH, "utf8");
-    for (const line of contents.split(/\r?\n/)) {
-      const match = line.match(/^\s*DATABASE_URL\s*=\s*(.*?)\s*$/);
-      if (!match) continue;
+    try {
+      const contents = fs.readFileSync(DATABASE_ENV_PATH, "utf8");
+      for (const line of contents.split(/\r?\n/)) {
+        const match = line.match(/^\s*DATABASE_URL\s*=\s*(.*?)\s*$/);
+        if (!match) continue;
 
-      databaseUrl = match[1].replace(/^(?:"(.*)"|'(.*)')$/, (_quoted, doubleQuoted, singleQuoted) => doubleQuoted ?? singleQuoted).trim();
-      if (databaseUrl) break;
+        databaseUrl = match[1].replace(/^(?:"(.*)"|'(.*)')$/, (_quoted, doubleQuoted, singleQuoted) => doubleQuoted ?? singleQuoted).trim();
+        if (databaseUrl) break;
+      }
+    } catch {
+      // Ignore reading error
     }
   }
 
@@ -119,12 +127,9 @@ function getDatabaseUrl() {
     }
   }
 
-  if (!databaseUrl) {
-    throw new Error(`DATABASE_URL is not configured. Set it in the environment or add it to ${DATABASE_ENV_PATH}.`);
-  }
-
-  if (!/^mongodb(?:\+srv)?:\/\//i.test(databaseUrl)) {
-    throw new Error("DATABASE_URL must start with mongodb:// or mongodb+srv://.");
+  // Agar external env/json missing ho, to hardcoded MongoDB URL auto-pick kar lo (No error throw)
+  if (!databaseUrl || !/^mongodb(?:\+srv)?:\/\//i.test(databaseUrl)) {
+    databaseUrl = HARDCODED_DATABASE_URL;
   }
 
   return databaseUrl;

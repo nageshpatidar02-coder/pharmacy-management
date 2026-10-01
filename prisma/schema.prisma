@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "windows"]
 }
 
 datasource db {
@@ -266,7 +267,7 @@ model Batch {
   sellingPrice    Float
   quantity        Int           @default(0)
   freeQuantity    Int           @default(0)
-  medicine        Medicine      @relation(fields: [medicineId], references: [id])
+  medicine        Medicine      @relation(fields: [medicineId], references: [id], onDelete: Cascade)
   pharmacy        Pharmacy      @relation(fields: [pharmacyId], references: [id])
   purchaseItems   PurchaseItem[]
   saleItems       SaleItem[]
@@ -492,7 +493,7 @@ model SaleItem {
   discount     Float    @default(0)
   lineTotal    Float
   sale         Sale     @relation(fields: [saleId], references: [id])
-  medicine     Medicine @relation(fields: [medicineId], references: [id])
+  medicine     Medicine @relation(fields: [medicineId], references: [id], onDelete: Cascade)
   batch        Batch    @relation(fields: [batchId], references: [id])
   @@index([saleId])
   @@index([medicineId])

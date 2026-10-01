@@ -1,6 +1,6 @@
 {
   "name": "pharma-desc",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Pharma Desc desktop application",
   "main": "electron/main.js",
@@ -25,7 +25,7 @@
     "dist:publish": "npm run publish-release",
     "desktop:release": "npm run publish-release",
     "icons": "node scripts/generate-icons.js",
-    "prisma:clean": "node -e \"const fs=require('fs'); const path=require('path'); const dir=path.join(process.cwd(),'node_modules','.prisma','client'); if (!fs.existsSync(dir)) process.exit(0); for (const entry of fs.readdirSync(dir)) { const full = path.join(dir, entry); if (entry.startsWith('query_engine-windows.dll.node.tmp') || entry.endsWith('.tmp') || entry.endsWith('.tmp.lock')) { try { fs.rmSync(full, {force: true}); console.log('Removed stale Prisma temp file:', entry); } catch (error) { console.warn('Could not remove stale Prisma temp file:', entry, error.message); } } }\"",
+    "prisma:clean": "node -e \"const fs=require('fs'); const path=require('path'); const dir=path.join(process.cwd(),'node_modules','.prisma','client'); if (!fs.existsSync(dir)) process.exit(0); for (const entry of fs.readdirSync(dir)) { const full = path.join(dir, entry); if (entry.startsWith('query_engine-windows.dll.node.tmp') || entry.endsWith('.tmp') || entry.endsWith('.tmp.lock')) { try { fs.rmSync(full, {force: true}); console.log('Removed stale Prisma temp file:', entry); } catch (error) { console.warn('Could not remove stale Prisma temp file:', error.message); } } }\"",
     "prisma:generate": "npm run prisma:clean && prisma generate",
     "prisma:push": "prisma db push",
     "prisma:seed": "prisma db seed",
@@ -74,7 +74,9 @@
     "appId": "com.pharmadesk.app",
     "productName": "PharmaDesk",
     "asar": true,
-    "asarUnpack": ["**/*.node"],
+    "asarUnpack": [
+      "**/*.node"
+    ],
     "directories": {
       "output": "dist",
       "buildResources": "public"

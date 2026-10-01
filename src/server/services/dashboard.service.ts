@@ -49,9 +49,9 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     ] = await Promise.all([
       prisma.medicine.count({ where: { active: true } }),
       prisma.supplier.count({ where: { pharmacyId, status: "ACTIVE" } }),
-      prisma.batch.findMany({ where: { pharmacyId }, 
-        include: { medicine: true }, 
-        orderBy: { expiryDate: "asc" } 
+      prisma.batch.findMany({
+        where: { pharmacyId },
+        orderBy: { expiryDate: "asc" },
       }),
       prisma.purchase.aggregate({
         where: { pharmacyId, invoiceDate: { gte: today, lt: tomorrow }, status: "COMPLETED" },
@@ -75,22 +75,29 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
       }),
     ]);
 
-    // Filter valid batches with active medicine
-    const activeBatches = batches.filter((batch: any) => batch.medicine && batch.medicine.active);
+    const batchMedicines = await prisma.medicine.findMany({
+      where: { id: { in: batches.map((batch) => batch.medicineId) } },
+      select: { id: true, active: true, itemType: true, unit: true, packSize: true, minimumStock: true },
+    });
+    const medicinesById = new Map(batchMedicines.map((medicine) => [medicine.id, medicine]));
+    const activeBatches = batches.flatMap((batch) => {
+      const medicine = medicinesById.get(batch.medicineId);
+      return medicine?.active ? [{ ...batch, medicine }] : [];
+    });
     
-    const expired = activeBatches.filter((batch: any) => new Date(batch.expiryDate) < now);
-    const nearExpiry = activeBatches.filter((batch: any) => {
+    const expired = activeBatches.filter((batch) => new Date(batch.expiryDate) < now);
+    const nearExpiry = activeBatches.filter((batch) => {
       const exp = new Date(batch.expiryDate);
       return exp >= now && exp <= expiryDate;
     });
     
     // Total Stock Units
-    const currentStock = activeBatches.reduce((total: number, batch: any) => {
+    const currentStock = activeBatches.reduce((total, batch) => {
       return total + (Number(batch.quantity) || 0) + (Number(batch.freeQuantity) || 0);
     }, 0);
 
     // Pack/Strip Stock Calculation
-    const totalStockCount = activeBatches.reduce((total: number, batch: any) => {
+    const totalStockCount = activeBatches.reduce((total, batch) => {
       const units = (Number(batch.quantity) || 0) + (Number(batch.freeQuantity) || 0);
       const itemType = String(batch.medicine?.itemType || batch.medicine?.unit || "OTHER").toUpperCase();
       
@@ -105,14 +112,14 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     }, 0);
 
     // Stock Valuation
-    const stockValue = activeBatches.reduce((total: number, batch: any) => {
+    const stockValue = activeBatches.reduce((total, batch) => {
       const price = Number(batch.purchasePrice) || 0;
       const qty = Number(batch.quantity) || 0;
       return total + (qty * price);
     }, 0);
 
     // Low Stock Items
-    const lowStock = activeBatches.filter((batch: any) => {
+    const lowStock = activeBatches.filter((batch) => {
       const totalQty = (Number(batch.quantity) || 0) + (Number(batch.freeQuantity) || 0);
       const minStock = Number(batch.medicine?.minimumStock) || 0;
       return totalQty <= minStock;
@@ -120,12 +127,12 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
 
     // Formatting Recent Activities
     const recentActivities: DashboardActivity[] = [
-      ...recentSales.map((sale: any) => ({
+      ...recentSales.map((sale) => ({
         title: "Customer sale",
         description: `${sale.invoiceNumber} • ₹${Number(sale.grandTotal || 0).toFixed(2)}`,
         time: new Date(sale.invoiceDate).toISOString(),
       })),
-      ...recentPurchases.map((purchase: any) => ({
+      ...recentPurchases.map((purchase) => ({
         title: "Stock purchase",
         description: `${purchase.invoiceNumber} • ₹${Number(purchase.grandTotal || 0).toFixed(2)}`,
         time: new Date(purchase.invoiceDate).toISOString(),

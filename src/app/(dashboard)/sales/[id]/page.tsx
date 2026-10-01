@@ -15,13 +15,17 @@ export default async function SaleDetailPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const sale = await prisma.sale.findUnique({
     where: { id, pharmacyId: user.pharmacyId },
-    include: { customer: true, items: { include: { medicine: { include: { category: true, manufacturer: true } } } }, payments: true },
+    include: { customer: true, items: true, payments: true },
   });
   if (!sale) notFound();
   const canManage = user.role.name === "SUPER_ADMIN" || user.role.permissions.some(({ permission }) => permission.key === PERMISSIONS.salesCreate);
 
-  const [batches, settings] = await Promise.all([
+  const [batches, medicines, settings] = await Promise.all([
     prisma.batch.findMany({ where: { id: { in: sale.items.map((item) => item.batchId) } } }),
+    prisma.medicine.findMany({
+      where: { id: { in: sale.items.map((item) => item.medicineId) } },
+      include: { category: true, manufacturer: true },
+    }),
     prisma.pharmacySettings.findUnique({ where: { pharmacyId: user.pharmacyId } }),
   ]);
   const invoiceSettings: InvoiceSettings = {
@@ -35,6 +39,8 @@ export default async function SaleDetailPage({ params }: { params: Promise<{ id:
     invoicePrefix: settings?.invoicePrefix ?? "INV",
   };
   const batchById = new Map(batches.map((batch) => [batch.id, batch]));
+  const medicineById = new Map(medicines.map((medicine) => [medicine.id, medicine]));
+  const saleItems = sale.items.map((item) => ({ ...item, medicine: medicineById.get(item.medicineId) ?? null }));
 
   return (
     <AppShell user={user}>
@@ -63,11 +69,11 @@ export default async function SaleDetailPage({ params }: { params: Promise<{ id:
               <table className="w-full text-left text-sm">
                 <thead><tr className="border-b text-muted-foreground"><th className="pb-3">Medicine details</th><th className="pb-3">Type</th><th className="pb-3">Batch</th><th className="pb-3">Qty</th><th className="pb-3">MRP</th><th className="pb-3">Rate</th><th className="pb-3 text-right">Total</th></tr></thead>
                 <tbody>
-                  {sale.items.map((item) => {
+                  {saleItems.map((item) => {
                     const batch = batchById.get(item.batchId);
                     return <tr key={item.id} className="border-b align-top last:border-0">
-                      <td className="py-3 font-medium">{item.medicine.name}<span className="block text-xs text-muted-foreground">{item.medicine.genericName ?? item.medicine.composition ?? "No composition"}</span><span className="block text-xs text-muted-foreground">{item.medicine.manufacturer?.name ?? "Manufacturer not specified"} {item.medicine.strength ? `· ${item.medicine.strength}` : ""}</span></td>
-                      <td className="py-3">{item.medicine.itemType}</td>
+                      <td className="py-3 font-medium">{item.medicine?.name ?? "Deleted Medicine"}<span className="block text-xs text-muted-foreground">{item.medicine?.genericName ?? item.medicine?.composition ?? "Medicine details unavailable"}</span><span className="block text-xs text-muted-foreground">{item.medicine?.manufacturer?.name ?? "Manufacturer not specified"} {item.medicine?.strength ? `· ${item.medicine.strength}` : ""}</span></td>
+                      <td className="py-3">{item.medicine?.itemType ?? "OTHER"}</td>
                       <td className="py-3">{batch?.batchNumber ?? "-"}</td>
                       <td className="py-3">{item.quantity}</td>
                       <td className="py-3">{(batch?.mrp ?? item.sellingPrice).toFixed(2)}</td>
