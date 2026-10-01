@@ -68,10 +68,18 @@ const emptyLine = (): PurchaseLine => ({
 
 const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
+function formatExpiryMonthYear(value: string) {
+  const isoDate = value.match(/^\d{4}-(0[1-9]|1[0-2])(?:-\d{2})?$/);
+  if (isoDate) return `${isoDate[1]}/${value.slice(2, 4)}`;
+
+  const digits = value.replace(/\D/g, "").slice(0, 4);
+  return digits.length > 2 ? `${digits.slice(0, 2)}/${digits.slice(2)}` : digits;
+}
+
 export function PurchaseForm({ suppliers, medicines: initialMedicines, initialData }: { suppliers: Supplier[]; medicines: Medicine[]; initialData?: PurchaseInitialData }) {
   const router = useRouter();
   const [medicinesList] = useState<Medicine[]>(initialMedicines);
-  const [lines, setLines] = useState<PurchaseLine[]>(() => initialData?.items ?? [emptyLine()]);
+  const [lines, setLines] = useState<PurchaseLine[]>(() => initialData?.items.map((line) => ({ ...line, expiryDate: formatExpiryMonthYear(line.expiryDate) })) ?? [emptyLine()]);
   const [supplierId, setSupplierId] = useState(initialData?.supplierId ?? "");
   const [invoiceNumber, setInvoiceNumber] = useState(initialData?.invoiceNumber ?? "");
   const [invoiceDate, setInvoiceDate] = useState(initialData?.invoiceDate ?? new Date().toISOString().slice(0, 10));
@@ -279,7 +287,7 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines, initialDa
                 <Field label="Selling Price" value={line.sellingPrice} onChange={(value) => updateLine(index, { sellingPrice: Math.max(0, Number(value) || 0) })} type="number" required />
                 <Field label="Discount (Rs)" value={line.discount} onChange={(value) => updateLine(index, { discount: Math.max(0, Number(value) || 0) })} type="number" />
                 <Field label="GST %" value={line.gstPercentage} onChange={(value) => updateLine(index, { gstPercentage: Math.min(100, Math.max(0, Number(value) || 0)) })} type="number" />
-                <Field label="Expiry Month / Year" value={line.expiryDate} onChange={(value) => updateLine(index, { expiryDate: value })} type="month" required />
+                <Field label="Expiry Month / Year" value={line.expiryDate} onChange={(value) => updateLine(index, { expiryDate: formatExpiryMonthYear(value) })} type="text" inputMode="numeric" maxLength={5} placeholder="MM/YY" required />
                 
                 <div className="flex items-end justify-between gap-2 text-sm md:col-span-4 border-t pt-2">
                   <span>Line Total: <strong className="text-base">{money(lineTotal).toFixed(2)}</strong></span>
@@ -365,6 +373,8 @@ function Field({
   type = "text",
   step,
   min,
+  maxLength,
+  inputMode,
   defaultValue,
   value,
   onChange,
@@ -378,6 +388,8 @@ function Field({
   type?: string;
   step?: string;
   min?: string;
+  maxLength?: number;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
   defaultValue?: string | number;
   value?: string | number;
   onChange?: (value: string) => void;
@@ -401,6 +413,8 @@ function Field({
         type={type}
         step={step}
         min={min}
+        maxLength={maxLength}
+        inputMode={inputMode}
         {...(isControlled ? { value } : { defaultValue: defaultValue ?? "" })}
         onChange={(event) => onChange?.(event.target.value)}
         required={required}

@@ -11,10 +11,16 @@ const purchaseItemSchema = z
     manufacturingDate: z.coerce.date().optional(), // 1. Optional kar diya
     expiryDate: z.preprocess((value) => {
       if (typeof value !== "string") return value;
-      const month = value.match(/^(\d{4})-(0[1-9]|1[0-2])$/);
-      if (!month) return value;
-      return new Date(Date.UTC(Number(month[1]), Number(month[2]), 0, 23, 59, 59, 999));
-    }, z.coerce.date({ error: "Expiry month aur year zaroori hai" })),
+      const shortYear = value.match(/^(0[1-9]|1[0-2])\/(\d{2})$/);
+      if (shortYear) {
+        return new Date(Date.UTC(2000 + Number(shortYear[2]), Number(shortYear[1]), 0, 23, 59, 59, 999));
+      }
+      const fullYear = value.match(/^(\d{4})-(0[1-9]|1[0-2])$/);
+      if (fullYear) {
+        return new Date(Date.UTC(Number(fullYear[1]), Number(fullYear[2]), 0, 23, 59, 59, 999));
+      }
+      return value;
+    }, z.coerce.date({ error: "Expiry month/year MM/YY mein likhein, jaise 08/27" })),
     quantity: wholeNumber.positive("Quantity 1 ya usse zyada honi chahiye"),
     freeQuantity: wholeNumber.min(0).default(0),
     purchaseRate: z.coerce.number().finite().nonnegative(),
