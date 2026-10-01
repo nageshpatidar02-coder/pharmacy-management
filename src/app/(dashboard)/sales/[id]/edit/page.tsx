@@ -22,6 +22,7 @@ export default async function EditSalePage({ params }: { params: Promise<{ id: s
         itemType: true,
         sellingPrice: true,
         purchasePrice: true,
+        mrp: true,
         packSize: true,
         unit: true,
         batches: {

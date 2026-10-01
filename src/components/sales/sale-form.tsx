@@ -26,6 +26,7 @@ type Medicine = {
   name: string;
   sellingPrice: number;
   purchasePrice: number;
+  mrp: number;
   itemType?: "TABLET" | "CAPSULE" | "SYRUP" | "INJECTION" | "DROPS" | "OINTMENT" | "EQUIPMENT" | "OTHER";
   packSize?: string | number | null;
   unit?: string | null;
@@ -239,7 +240,7 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
     const unitsPerStrip = parseUnitsInStrip(medicine?.packSize);
     const purchasePrice = batch?.purchasePrice ?? medicine?.purchasePrice ?? 0;
     const minimumUnitPrice = roundUpToCent(purchasePrice / unitsPerStrip);
-    const stripPrice = Math.max(batch?.sellingPrice ?? medicine?.sellingPrice ?? 0, purchasePrice, minimumUnitPrice * unitsPerStrip);
+    const stripPrice = Math.max(medicine?.sellingPrice ?? batch?.sellingPrice ?? 0, purchasePrice, minimumUnitPrice * unitsPerStrip);
     const perUnitPrice = Math.max(roundUpToCent(stripPrice / unitsPerStrip), minimumUnitPrice);
     const itemType = medicine?.itemType ?? "OTHER";
 
@@ -261,10 +262,11 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
 
   function selectBatch(index: number, batchId: string) {
     const line = lines[index];
-    const batch = medicines.find((m) => m.id === line.medicineId)?.batches.find((b) => b.id === batchId);
-    const purchasePrice = batch?.purchasePrice ?? 0;
+    const medicine = medicines.find((m) => m.id === line.medicineId);
+    const batch = medicine?.batches.find((b) => b.id === batchId);
+    const purchasePrice = batch?.purchasePrice ?? medicine?.purchasePrice ?? 0;
     const minimumUnitPrice = roundUpToCent(purchasePrice / (line.unitsPerStrip || 1));
-    const stripPrice = Math.max(batch?.sellingPrice ?? line.stripPrice, purchasePrice, minimumUnitPrice * (line.unitsPerStrip || 1));
+    const stripPrice = Math.max(medicine?.sellingPrice ?? batch?.sellingPrice ?? line.stripPrice, purchasePrice, minimumUnitPrice * (line.unitsPerStrip || 1));
     const perUnitPrice = Math.max(roundUpToCent(stripPrice / (line.unitsPerStrip || 1)), minimumUnitPrice);
 
     updateLine(index, {
@@ -587,7 +589,7 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
                     <option value="">Select Batch</option>
                     {(medicine?.batches ?? []).map((entry) => (
                       <option key={entry.id} value={entry.id}>
-                        {entry.batchNumber} (Stock: {entry.quantity})
+                        {entry.batchNumber} (Stock: {entry.quantity}, Cost: ₹{entry.purchasePrice.toFixed(2)})
                       </option>
                     ))}
                   </select>
@@ -716,6 +718,7 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
                         required
                       />
                       <span className="block text-[9px] text-right text-emerald-600 font-medium">₹/Tab</span>
+                      <span className="block text-[9px] text-right text-muted-foreground">MRP ₹{(batch?.mrp ?? medicine?.mrp ?? 0).toFixed(2)}</span>
                     </div>
                   ) : (
                     <div className="space-y-0.5">
@@ -731,6 +734,7 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
                       <span className="block text-[9px] text-right text-muted-foreground">
                         {isTablet ? "₹/Strip" : `₹/${getItemUnitLabel(line.itemType)}`}
                       </span>
+                      <span className="block text-[9px] text-right text-muted-foreground">MRP ₹{(batch?.mrp ?? medicine?.mrp ?? 0).toFixed(2)}</span>
                     </div>
                   )}
                 </div>

@@ -112,7 +112,7 @@ export async function updateMedicine(id: string, input: unknown, userId?: string
       const expiry = new Date(rawData.expiryDate);
       if (Number.isNaN(expiry.getTime())) throw new Error("Enter a valid batch expiry date.");
       const currentBatch = await tx.batch.findFirst({
-        where: { pharmacyId, medicineId: id, batchNumber: rawData.batchNumber },
+        where: { pharmacyId, medicineId: id, batchNumber: rawData.batchNumber, purchasePrice: updated.purchasePrice },
       });
       const expiryChanged = !currentBatch || currentBatch.expiryDate.getTime() !== expiry.getTime();
       if (expiryChanged && expiry <= new Date()) {
@@ -124,9 +124,6 @@ export async function updateMedicine(id: string, input: unknown, userId?: string
             where: { id: currentBatch.id },
             data: {
               expiryDate: expiry,
-              purchasePrice: updated.purchasePrice,
-              mrp: updated.mrp,
-              sellingPrice: updated.sellingPrice,
               quantity: nextQuantity,
             },
           })

@@ -214,8 +214,8 @@ model Medicine {
   hsnCode            String?
   gstPercentage      Float          @default(0)
   prescriptionRequired Boolean      @default(false)
-  barcode            String?        @unique
-  sku                String?        @unique
+  barcode            String?
+  sku                String?
   mrp                Float          @default(0)
   purchasePrice      Float          @default(0)
   sellingPrice       Float          @default(0)
@@ -236,6 +236,8 @@ model Medicine {
   @@index([categoryId])
   @@index([manufacturerId])
   @@index([active])
+  @@index([barcode])
+  @@index([sku])
 }
 
 model PharmacyMedicineConfig {
@@ -275,7 +277,7 @@ model Batch {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  @@unique([pharmacyId, medicineId, batchNumber])
+  @@unique([pharmacyId, medicineId, batchNumber, purchasePrice])
   @@index([pharmacyId, medicineId])
   @@index([medicineId])
   @@index([expiryDate])

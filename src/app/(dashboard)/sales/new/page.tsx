@@ -17,6 +17,7 @@ export default async function NewSalePage() {
         itemType: true,
         sellingPrice: true,
         purchasePrice: true,
+        mrp: true,
         packSize: true,
         unit: true,
         batches: {
