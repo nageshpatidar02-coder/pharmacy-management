@@ -272,8 +272,8 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines, initialDa
                 </div>
 
                 <Field label="Batch Number" value={line.batchNumber} onChange={(value) => updateLine(index, { batchNumber: value })} required />
-                <Field label="Quantity (Pcs/Bottles)" value={line.quantity} onChange={(value) => updateLine(index, { quantity: Math.max(1, Number(value) || 0) })} type="number" required />
-                <Field label="Free Qty (Scheme)" value={line.freeQuantity} onChange={(value) => updateLine(index, { freeQuantity: Math.max(0, Number(value) || 0) })} type="number" />
+                <Field label="Quantity (Pcs/Bottles)" value={line.quantity} onChange={(value) => updateLine(index, { quantity: Math.max(1, Math.trunc(Number(value) || 0)) })} type="number" step="1" min="1" required />
+                <Field label="Free Qty (Scheme)" value={line.freeQuantity} onChange={(value) => updateLine(index, { freeQuantity: Math.max(0, Math.trunc(Number(value) || 0)) })} type="number" step="1" min="0" />
                 <Field label="Purchase Rate" value={line.purchaseRate} onChange={(value) => updateLine(index, { purchaseRate: Math.max(0, Number(value) || 0) })} type="number" required />
                 <Field label="MRP" value={line.mrp} onChange={(value) => updateLine(index, { mrp: Math.max(0, Number(value) || 0) })} type="number" required />
                 <Field label="Selling Price" value={line.sellingPrice} onChange={(value) => updateLine(index, { sellingPrice: Math.max(0, Number(value) || 0) })} type="number" required />

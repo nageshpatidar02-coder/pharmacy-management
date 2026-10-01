@@ -5,6 +5,7 @@
   "description": "Pharma Desc desktop application",
   "main": "electron/main.js",
   "scripts": {
+    
     "dev": "next dev",
     "start": "electron .",
     "desktop": "concurrently --kill-others-on-fail \"next dev -p 3000\" \"wait-on http://localhost:3000 && set ELECTRON_START_URL=http://localhost:3000&& electron .\"",

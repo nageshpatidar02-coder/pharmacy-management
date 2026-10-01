@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+const wholeNumber = z.coerce.number().refine(Number.isInteger, {
+  message: "Please enter a whole number.",
+});
+
 const purchaseItemSchema = z
   .object({
     medicineId: z.string().min(1, "Medicine select karein"),
@@ -11,8 +15,8 @@ const purchaseItemSchema = z
       if (!month) return value;
       return new Date(Date.UTC(Number(month[1]), Number(month[2]), 0, 23, 59, 59, 999));
     }, z.coerce.date({ error: "Expiry month aur year zaroori hai" })),
-    quantity: z.coerce.number().int().positive("Quantity 1 ya usse zyada honi chahiye"),
-    freeQuantity: z.coerce.number().int().min(0).default(0),
+    quantity: wholeNumber.positive("Quantity 1 ya usse zyada honi chahiye"),
+    freeQuantity: wholeNumber.min(0).default(0),
     purchaseRate: z.coerce.number().finite().nonnegative(),
     mrp: z.coerce.number().finite().nonnegative(),
     sellingPrice: z.coerce.number().finite().nonnegative(),
