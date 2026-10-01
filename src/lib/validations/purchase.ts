@@ -40,6 +40,10 @@ const purchaseItemSchema = z
   .refine((item) => item.expiryDate > new Date(), {
     message: "Expired batches ko purchase nahi kiya ja sakta",
     path: ["expiryDate"],
+  })
+  .refine((item) => item.discount <= item.quantity * item.purchaseRate, {
+    message: "Line discount cannot exceed the item purchase amount.",
+    path: ["discount"],
   });
 
 export const purchaseSchema = z.object({
@@ -54,6 +58,28 @@ export const purchaseSchema = z.object({
   discountType: z.enum(["AMOUNT", "PERCENTAGE"]).default("AMOUNT"),
   discountValue: z.coerce.number().finite().min(0).default(0),
   items: z.array(purchaseItemSchema).min(1, "Kum se kum 1 item add karein"),
+}).superRefine((purchase, context) => {
+  const subtotal = purchase.items.reduce((sum, item) => sum + item.quantity * item.purchaseRate, 0);
+  const lineDiscount = purchase.items.reduce((sum, item) => sum + Math.min(item.discount, item.quantity * item.purchaseRate), 0);
+  const remainingAmount = Math.max(0, subtotal - lineDiscount);
+  const maximumBillDiscount = purchase.discountType === "PERCENTAGE" ? 100 : remainingAmount;
+
+  if (purchase.discountValue > maximumBillDiscount) {
+    context.addIssue({
+      code: "custom",
+      path: ["discountValue"],
+      message: purchase.discountType === "PERCENTAGE"
+        ? "Purchase discount percentage cannot exceed 100%."
+        : `Purchase bill discount cannot exceed ₹${remainingAmount.toFixed(2)}.`,
+    });
+  }
+
+  const billDiscount = purchase.discountType === "PERCENTAGE"
+    ? remainingAmount * purchase.discountValue / 100
+    : purchase.discountValue;
+  if (lineDiscount + billDiscount > subtotal + 0.005) {
+    context.addIssue({ code: "custom", path: ["discountValue"], message: "Total discounts cannot exceed the purchase amount." });
+  }
 });
 
 export type PurchaseInput = z.infer<typeof purchaseSchema>;

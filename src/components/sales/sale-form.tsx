@@ -8,6 +8,7 @@ import { saleSchema } from "@/lib/validations/sale";
 import { Plus, Trash2, UserPlus, ShoppingBag, Receipt, AlertCircle, RefreshCw } from "lucide-react";
 import { unitsPerStrip } from "@/lib/stock";
 import { SearchableSelect } from "@/components/shared/searchable-select";
+import { Toast } from "@/components/ui/toast";
 
 type Customer = { id: string; name: string; mobile?: string | null };
 type Batch = {
@@ -16,6 +17,7 @@ type Batch = {
   quantity: number;
   sellingPrice: number;
   mrp: number;
+  purchasePrice: number;
   expiryDate: Date;
 };
 
@@ -23,6 +25,7 @@ type Medicine = {
   id: string;
   name: string;
   sellingPrice: number;
+  purchasePrice: number;
   itemType?: "TABLET" | "CAPSULE" | "SYRUP" | "INJECTION" | "DROPS" | "OINTMENT" | "EQUIPMENT" | "OTHER";
   packSize?: string | number | null;
   unit?: string | null;
@@ -42,6 +45,7 @@ type Line = {
   perUnitPrice: number;
   sellingPrice: number;
   discount: number;
+  discountType: "AMOUNT" | "PERCENTAGE";
 };
 
 type SaleInitialData = {
@@ -67,7 +71,76 @@ const emptyLine = (): Line => ({
   perUnitPrice: 0,
   sellingPrice: 0,
   discount: 0,
+  discountType: "AMOUNT",
 });
+
+function roundMoney(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function floorMoney(value: number) {
+  return Math.floor((value + Number.EPSILON) * 100) / 100;
+}
+
+function roundUpToCent(value: number) {
+  return Math.ceil((value - Number.EPSILON) * 100) / 100;
+}
+
+function getLineSubtotal(line: Line) {
+  const isTablet = line.itemType === "TABLET" || line.itemType === "CAPSULE";
+  if (!isTablet) return (line.quantity || 0) * (line.stripPrice || 0);
+  if (line.sellMode === "LOOSE_TABLET") return (line.loose || 0) * (line.perUnitPrice || 0);
+  const stripsTotal = (line.strips || 0) * (line.stripPrice || 0);
+  return line.sellMode === "BOTH" ? stripsTotal + (line.loose || 0) * (line.perUnitPrice || 0) : stripsTotal;
+}
+
+function getLineMaxDiscountAmount(line: Line, medicines: Medicine[]) {
+  const medicine = medicines.find((entry) => entry.id === line.medicineId);
+  const batch = medicine?.batches.find((entry) => entry.id === line.batchId);
+  const isTablet = line.itemType === "TABLET" || line.itemType === "CAPSULE";
+  const purchasePricePerUnit = (batch?.purchasePrice ?? medicine?.purchasePrice ?? 0) / (isTablet ? Math.max(1, line.unitsPerStrip || 1) : 1);
+  return floorMoney(Math.max(0, getLineSubtotal(line) - line.quantity * purchasePricePerUnit));
+}
+
+function getLineDiscountAmount(line: Line, medicines: Medicine[]) {
+  const value = Math.max(0, line.discount || 0);
+  const requestedAmount = line.discountType === "PERCENTAGE"
+    ? roundMoney(getLineSubtotal(line) * value / 100)
+    : roundMoney(value);
+  return Math.min(requestedAmount, getLineMaxDiscountAmount(line, medicines));
+}
+
+function normalizeSaleLine(line: Line, changes: Partial<Line>, medicines: Medicine[]) {
+  const updated = { ...line, ...changes };
+  const medicine = medicines.find((entry) => entry.id === updated.medicineId);
+  const batch = medicine?.batches.find((entry) => entry.id === updated.batchId);
+  const isTablet = updated.itemType === "TABLET" || updated.itemType === "CAPSULE";
+  const packSize = Math.max(1, updated.unitsPerStrip || 1);
+  const purchasePricePerPack = Math.max(0, batch?.purchasePrice ?? medicine?.purchasePrice ?? 0);
+  const purchasePricePerUnit = purchasePricePerPack / (isTablet ? packSize : 1);
+  const minimumUnitPrice = roundUpToCent(purchasePricePerUnit);
+  const minimumPackPrice = Math.max(purchasePricePerPack, minimumUnitPrice * (isTablet ? packSize : 1));
+  const requestedRateBelowCost = updated.sellMode === "LOOSE_TABLET"
+    ? updated.perUnitPrice < minimumUnitPrice
+    : updated.stripPrice < purchasePricePerPack;
+
+  updated.stripPrice = Math.max(0, updated.stripPrice || 0, minimumPackPrice);
+  updated.perUnitPrice = Math.max(0, updated.perUnitPrice || 0, minimumUnitPrice);
+  updated.quantity = isTablet
+    ? calculateSaleQuantity(updated.itemType, updated.sellMode, updated.strips, updated.loose, updated.quantity, packSize)
+    : Math.max(0, Number(updated.quantity) || 0);
+
+  const gross = getLineSubtotal(updated);
+  const maxDiscountAmount = floorMoney(Math.max(0, gross - updated.quantity * purchasePricePerUnit));
+  const maxDiscountValue = updated.discountType === "PERCENTAGE"
+    ? (gross > 0 ? maxDiscountAmount / gross * 100 : 0)
+    : maxDiscountAmount;
+  const requestedDiscount = Math.max(0, Number(updated.discount) || 0);
+  const discountWasCapped = requestedDiscount > maxDiscountValue;
+  updated.discount = Math.min(updated.discountType === "AMOUNT" ? roundMoney(requestedDiscount) : requestedDiscount, maxDiscountValue);
+
+  return { line: updated, requestedRateBelowCost, discountWasCapped, maxDiscountAmount, purchasePricePerUnit };
+}
 
 function parseUnitsInStrip(packSize?: string | number | null) {
   return unitsPerStrip(packSize);
@@ -129,41 +202,33 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
     const strips = Math.floor(item.quantity / unitsPerPackage);
     const loose = item.quantity % unitsPerPackage;
     const sellMode = !isTablet ? "FULL_STRIP" : loose > 0 ? "BOTH" : strips > 0 ? "FULL_STRIP" : "LOOSE_TABLET";
-    return { medicineId: item.medicineId, batchId: item.batchId, itemType, sellMode, strips: strips || 1, loose, quantity: item.quantity, unitsPerStrip: unitsPerPackage, stripPrice: item.sellingPrice * (isTablet ? unitsPerPackage : 1), perUnitPrice: item.sellingPrice, sellingPrice: item.sellingPrice * (isTablet ? unitsPerPackage : 1), discount: item.discount };
+    return { medicineId: item.medicineId, batchId: item.batchId, itemType, sellMode, strips: strips || 1, loose, quantity: item.quantity, unitsPerStrip: unitsPerPackage, stripPrice: item.sellingPrice * (isTablet ? unitsPerPackage : 1), perUnitPrice: item.sellingPrice, sellingPrice: item.sellingPrice * (isTablet ? unitsPerPackage : 1), discount: item.discount, discountType: "AMOUNT" as const };
   }) : [emptyLine()]);
   const [invoiceNumber, setInvoiceNumber] = useState(() => initialData?.invoiceNumber ?? generateInvoiceNo(true));
   const [paidAmount, setPaidAmount] = useState<number | "">(initialData?.paidAmount ?? 0);
   const [paymentMethod, setPaymentMethod] = useState(initialData?.paymentMethod ?? "CASH");
   const [error, setError] = useState("");
+  const [toastMessage, setToastMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [creatingCustomer, setCreatingCustomer] = useState(false);
 
   const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
   function updateLine(index: number, changes: Partial<Line>) {
+    const currentLine = lines[index];
+    if (!currentLine) return;
+    const normalized = normalizeSaleLine(currentLine, changes, medicines);
+    if (normalized.requestedRateBelowCost) {
+      const requiredPrice = normalized.line.sellMode === "LOOSE_TABLET" ? normalized.purchasePricePerUnit : (medicines.find((medicine) => medicine.id === normalized.line.medicineId)?.batches.find((batch) => batch.id === normalized.line.batchId)?.purchasePrice ?? medicines.find((medicine) => medicine.id === normalized.line.medicineId)?.purchasePrice ?? 0);
+      setToastMessage(`Selling price cannot be less than purchase price (₹${roundMoney(requiredPrice).toFixed(2)}).`);
+    } else if (normalized.discountWasCapped) {
+      setToastMessage(`Discount cannot exceed profit margin. Automatically set to max allowed discount (₹${normalized.maxDiscountAmount.toFixed(2)}).`);
+    }
     setLines((current) =>
       current.map((line, lineIndex) => {
         if (lineIndex !== index) return line;
-        const updated = { ...line, ...changes };
-        const isTablet = updated.itemType === "TABLET" || updated.itemType === "CAPSULE";
-
-        let calculatedQty = 0;
-        let effectiveSellingPrice = updated.stripPrice;
-
-        if (isTablet) {
-          calculatedQty = calculateSaleQuantity(updated.itemType, updated.sellMode, updated.strips, updated.loose, updated.quantity, updated.unitsPerStrip);
-          effectiveSellingPrice = updated.sellMode === "LOOSE_TABLET" ? updated.perUnitPrice : updated.stripPrice;
-        } else {
-          // Non-Tablets (Syrup, Injection, Drops, etc.)
-          calculatedQty = updated.quantity || 1;
-          effectiveSellingPrice = updated.stripPrice;
-        }
-
-        return {
-          ...updated,
-          quantity: calculatedQty,
-          sellingPrice: effectiveSellingPrice,
-        };
+        const updated = normalizeSaleLine(line, changes, medicines).line;
+        return { ...updated, sellingPrice: updated.sellMode === "LOOSE_TABLET" ? updated.perUnitPrice : updated.stripPrice };
       })
     );
   }
@@ -172,8 +237,10 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
     const medicine = medicines.find((entry) => entry.id === medicineId);
     const batch = medicine?.batches[0];
     const unitsPerStrip = parseUnitsInStrip(medicine?.packSize);
-    const stripPrice = batch?.sellingPrice ?? medicine?.sellingPrice ?? 0;
-    const perUnitPrice = Number((stripPrice / unitsPerStrip).toFixed(2));
+    const purchasePrice = batch?.purchasePrice ?? medicine?.purchasePrice ?? 0;
+    const minimumUnitPrice = roundUpToCent(purchasePrice / unitsPerStrip);
+    const stripPrice = Math.max(batch?.sellingPrice ?? medicine?.sellingPrice ?? 0, purchasePrice, minimumUnitPrice * unitsPerStrip);
+    const perUnitPrice = Math.max(roundUpToCent(stripPrice / unitsPerStrip), minimumUnitPrice);
     const itemType = medicine?.itemType ?? "OTHER";
 
     updateLine(index, {
@@ -188,14 +255,17 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
       stripPrice,
       perUnitPrice,
       sellingPrice: stripPrice,
+      discountType: "AMOUNT",
     });
   }
 
   function selectBatch(index: number, batchId: string) {
     const line = lines[index];
     const batch = medicines.find((m) => m.id === line.medicineId)?.batches.find((b) => b.id === batchId);
-    const stripPrice = batch?.sellingPrice ?? line.stripPrice;
-    const perUnitPrice = Number((stripPrice / (line.unitsPerStrip || 1)).toFixed(2));
+    const purchasePrice = batch?.purchasePrice ?? 0;
+    const minimumUnitPrice = roundUpToCent(purchasePrice / (line.unitsPerStrip || 1));
+    const stripPrice = Math.max(batch?.sellingPrice ?? line.stripPrice, purchasePrice, minimumUnitPrice * (line.unitsPerStrip || 1));
+    const perUnitPrice = Math.max(roundUpToCent(stripPrice / (line.unitsPerStrip || 1)), minimumUnitPrice);
 
     updateLine(index, {
       batchId,
@@ -224,7 +294,7 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
           lineTotal = (line.quantity || 0) * (line.stripPrice || 0);
         }
 
-        const lineDiscount = line.discount || 0;
+        const lineDiscount = getLineDiscountAmount(line, medicines);
         const netLineTotal = Math.max(0, lineTotal - lineDiscount);
 
         return {
@@ -236,7 +306,7 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
       },
       { totalUnits: 0, grossTotal: 0, totalDiscount: 0, netTotal: 0 }
     );
-  }, [lines]);
+  }, [lines, medicines]);
 
   async function addCustomer() {
     if (newCustomerName.trim().length < 2) {
@@ -274,15 +344,23 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
     setSaving(true);
     setError("");
 
+    const normalizedLines = lines.map((line) => normalizeSaleLine(line, {}, medicines));
+    const correction = normalizedLines.find((entry) => entry.requestedRateBelowCost || entry.discountWasCapped);
+    if (correction) {
+      setLines(normalizedLines.map((entry) => ({ ...entry.line, sellingPrice: entry.line.sellMode === "LOOSE_TABLET" ? entry.line.perUnitPrice : entry.line.stripPrice })));
+      setToastMessage(correction.requestedRateBelowCost
+        ? `Selling price cannot be less than purchase price (₹${roundMoney(correction.purchasePricePerUnit).toFixed(2)}).`
+        : `Discount cannot exceed profit margin. Automatically set to max allowed discount (₹${correction.maxDiscountAmount.toFixed(2)}).`);
+      setSaving(false);
+      return;
+    }
+
     const parsed = saleSchema.safeParse({
       customerId,
       invoiceNumber,
       paidAmount: initialData ? initialData.paidAmount : Number(paidAmount) || 0,
       paymentMethod,
-      items: lines.map((line) => {
-        const isTablet = line.itemType === "TABLET" || line.itemType === "CAPSULE";
-        const unitRate = isTablet && line.sellMode === "LOOSE_TABLET" ? line.perUnitPrice : line.stripPrice;
-
+      items: normalizedLines.map(({ line }) => {
         return {
           medicineId: line.medicineId,
           batchId: line.batchId,
@@ -291,8 +369,10 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
           strips: line.strips,
           loose: line.loose,
           quantity: line.quantity,
-          sellingPrice: isTablet ? Number((unitRate / (line.unitsPerStrip || 1)).toFixed(2)) : unitRate,
-          discount: line.discount,
+          sellingPrice: line.itemType === "TABLET" || line.itemType === "CAPSULE"
+            ? Number(((line.sellMode === "LOOSE_TABLET" ? line.perUnitPrice : line.stripPrice / (line.unitsPerStrip || 1))).toFixed(2))
+            : line.stripPrice,
+          discount: getLineDiscountAmount(line, medicines),
         };
       }),
     });
@@ -467,21 +547,16 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
           {lines.map((line, index) => {
             const medicine = medicines.find((m) => m.id === line.medicineId);
             const isTablet = line.itemType === "TABLET" || line.itemType === "CAPSULE";
-
-            let lineSubtotal = 0;
-            if (isTablet) {
-              if (line.sellMode === "LOOSE_TABLET") {
-                lineSubtotal = (line.loose || 0) * (line.perUnitPrice || 0);
-              } else if (line.sellMode === "BOTH") {
-                lineSubtotal = (line.strips || 0) * (line.stripPrice || 0) + (line.loose || 0) * (line.perUnitPrice || 0);
-              } else {
-                lineSubtotal = (line.strips || 0) * (line.stripPrice || 0);
-              }
-            } else {
-              lineSubtotal = (line.quantity || 0) * (line.stripPrice || 0);
-            }
-
-            const lineNet = Math.max(0, lineSubtotal - (line.discount || 0));
+            const lineSubtotal = getLineSubtotal(line);
+            const lineDiscount = getLineDiscountAmount(line, medicines);
+            const lineNet = Math.max(0, lineSubtotal - lineDiscount);
+            const batch = medicine?.batches.find((entry) => entry.id === line.batchId);
+            const purchasePricePerPack = batch?.purchasePrice ?? medicine?.purchasePrice ?? 0;
+            const purchasePricePerUnit = purchasePricePerPack / (isTablet ? Math.max(1, line.unitsPerStrip) : 1);
+            const maximumDiscount = getLineMaxDiscountAmount(line, medicines);
+            const maximumDiscountInput = line.discountType === "PERCENTAGE"
+              ? (lineSubtotal > 0 ? maximumDiscount / lineSubtotal * 100 : 0)
+              : maximumDiscount;
 
             return (
               <div
@@ -633,7 +708,7 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
                     <div className="space-y-0.5">
                       <Input
                         type="number"
-                        min="0"
+                        min={roundUpToCent(purchasePricePerUnit)}
                         step="0.01"
                         value={line.perUnitPrice || ""}
                         onChange={(e) => updateLine(index, { perUnitPrice: Number(e.target.value) })}
@@ -646,7 +721,7 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
                     <div className="space-y-0.5">
                       <Input
                         type="number"
-                        min="0"
+                        min={Math.max(purchasePricePerPack, roundUpToCent(purchasePricePerUnit) * (isTablet ? line.unitsPerStrip : 1))}
                         step="0.01"
                         value={line.stripPrice || ""}
                         onChange={(e) => updateLine(index, { stripPrice: Number(e.target.value) })}
@@ -662,16 +737,28 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
 
                 {/* Discount */}
                 <div className="md:col-span-1">
-                  <label className="text-[10px] font-semibold text-muted-foreground md:hidden">Disc (₹)</label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={line.discount || ""}
-                    onChange={(e) => updateLine(index, { discount: Number(e.target.value) })}
-                    placeholder="0.00"
-                    className={`h-10 text-right text-xs font-mono ${noSpinnerClass}`}
-                  />
+                  <label className="text-[10px] font-semibold text-muted-foreground md:hidden">Discount</label>
+                  <div className="space-y-1">
+                    <select
+                      aria-label="Discount type"
+                      value={line.discountType}
+                      onChange={(event) => updateLine(index, { discountType: event.target.value as Line["discountType"] })}
+                      className="h-7 w-full rounded-md border bg-background px-1 text-[10px]"
+                    >
+                      <option value="AMOUNT">Amount ₹</option>
+                      <option value="PERCENTAGE">Percent %</option>
+                    </select>
+                    <Input
+                      type="number"
+                      min="0"
+                      max={maximumDiscountInput}
+                      step="0.01"
+                      value={line.discount || ""}
+                      onChange={(event) => updateLine(index, { discount: Number(event.target.value) || 0 })}
+                      placeholder="0.00"
+                      className={`h-8 text-right text-xs font-mono ${noSpinnerClass}`}
+                    />
+                  </div>
                 </div>
 
                 {/* Line Total & Delete */}
@@ -728,6 +815,7 @@ export function SaleForm({ customers, medicines, initialData }: { customers: Cus
           <span>{error}</span>
         </div>
       )}
+      {toastMessage ? <Toast message={toastMessage} onDismiss={() => setToastMessage("")} /> : null}
     </form>
   );
 }

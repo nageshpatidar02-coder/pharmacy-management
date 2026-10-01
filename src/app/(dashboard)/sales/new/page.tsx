@@ -16,11 +16,12 @@ export default async function NewSalePage() {
         name: true,
         itemType: true,
         sellingPrice: true,
+        purchasePrice: true,
         packSize: true,
         unit: true,
         batches: {
           where: { quantity: { gt: 0 }, expiryDate: { gt: new Date() } },
-          select: { id: true, batchNumber: true, quantity: true, sellingPrice: true, mrp: true, expiryDate: true },
+          select: { id: true, batchNumber: true, quantity: true, sellingPrice: true, mrp: true, purchasePrice: true, expiryDate: true },
         },
       },
       orderBy: { name: "asc" },

@@ -106,7 +106,11 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines, initialDa
     return result;
   }, { subtotal: 0, lineDiscount: 0, taxable: 0, tax: 0 });
 
-  const billDiscount = discountType === "PERCENTAGE" ? Math.min(totals.taxable * Math.min(discountValue, 100) / 100, totals.taxable) : Math.min(Math.max(discountValue, 0), totals.taxable);
+  const maxDiscountValue = discountType === "PERCENTAGE" ? 100 : totals.taxable;
+  const effectiveDiscountValue = Math.min(Math.max(discountValue, 0), maxDiscountValue);
+  const requestedBillDiscount = discountType === "PERCENTAGE" ? totals.taxable * discountValue / 100 : discountValue;
+  const hasInvalidNetTotal = !Number.isFinite(requestedBillDiscount) || totals.taxable - requestedBillDiscount < -0.005;
+  const billDiscount = discountType === "PERCENTAGE" ? totals.taxable * effectiveDiscountValue / 100 : effectiveDiscountValue;
   const taxTotal = igst > 0 ? igst : totals.tax;
   const grandTotal = Math.round(Math.max(totals.taxable - billDiscount, 0) + taxTotal);
   const totalDiscount = totals.lineDiscount + billDiscount;
@@ -164,8 +168,8 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines, initialDa
       paidAmount, 
       igst,
       discountType, 
-      discountValue, 
-      items: lines 
+      discountValue: effectiveDiscountValue,
+      items: lines.map((line) => ({ ...line, discount: Math.min(Math.max(line.discount, 0), line.quantity * line.purchaseRate) })),
     });
 
     if (!parsed.success) { 
@@ -285,7 +289,7 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines, initialDa
                 <Field label="Purchase Rate" value={line.purchaseRate} onChange={(value) => updateLine(index, { purchaseRate: Math.max(0, Number(value) || 0) })} type="number" required />
                 <Field label="MRP" value={line.mrp} onChange={(value) => updateLine(index, { mrp: Math.max(0, Number(value) || 0) })} type="number" required />
                 <Field label="Selling Price" value={line.sellingPrice} onChange={(value) => updateLine(index, { sellingPrice: Math.max(0, Number(value) || 0) })} type="number" required />
-                <Field label="Discount (Rs)" value={line.discount} onChange={(value) => updateLine(index, { discount: Math.max(0, Number(value) || 0) })} type="number" />
+                <Field label="Discount (Rs)" value={Math.min(line.discount, line.quantity * line.purchaseRate)} onChange={(value) => updateLine(index, { discount: Math.min(line.quantity * line.purchaseRate, Math.max(0, Number(value) || 0)) })} type="number" min="0" max={line.quantity * line.purchaseRate} />
                 <Field label="GST %" value={line.gstPercentage} onChange={(value) => updateLine(index, { gstPercentage: Math.min(100, Math.max(0, Number(value) || 0)) })} type="number" />
                 <Field label="Expiry Month / Year" value={line.expiryDate} onChange={(value) => updateLine(index, { expiryDate: formatExpiryMonthYear(value) })} type="text" inputMode="numeric" maxLength={5} placeholder="MM/YY" required />
                 
@@ -314,14 +318,14 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines, initialDa
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <label className="text-sm font-medium">
               Discount Type
-              <select value={discountType} onChange={(event) => setDiscountType(event.target.value as "AMOUNT" | "PERCENTAGE")} className="mt-2 h-10 w-full rounded-md border bg-background px-3">
+              <select value={discountType} onChange={(event) => { const type = event.target.value as "AMOUNT" | "PERCENTAGE"; setDiscountType(type); setDiscountValue((value) => Math.min(value, type === "PERCENTAGE" ? 100 : totals.taxable)); }} className="mt-2 h-10 w-full rounded-md border bg-background px-3">
                 <option value="AMOUNT">Amount (₹)</option>
                 <option value="PERCENTAGE">Percentage (%)</option>
               </select>
             </label>
             <label className="text-sm font-medium">
               Discount Value
-              <Input type="number" min="0" max={discountType === "PERCENTAGE" ? 100 : undefined} step="0.01" value={discountValue} onChange={(event) => setDiscountValue(Math.max(0, Number(event.target.value) || 0))} />
+              <Input type="number" min="0" max={maxDiscountValue} step="0.01" value={effectiveDiscountValue} onChange={(event) => setDiscountValue(Math.min(maxDiscountValue, Math.max(0, Number(event.target.value) || 0)))} />
             </label>
             <label className="text-sm font-medium">
               Payment Method
@@ -358,7 +362,7 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines, initialDa
         </div>
       </div>
 
-      <Button disabled={pending} className="w-full md:w-auto h-12 text-base px-8">
+      <Button disabled={pending || hasInvalidNetTotal} className="w-full md:w-auto h-12 text-base px-8">
         {pending ? "Saving Purchase & Updating Stock..." : initialData ? "Save Purchase Changes" : "Save Purchase Bill"}
       </Button>
 
@@ -373,6 +377,7 @@ function Field({
   type = "text",
   step,
   min,
+  max,
   maxLength,
   inputMode,
   defaultValue,
@@ -388,6 +393,7 @@ function Field({
   type?: string;
   step?: string;
   min?: string;
+  max?: number;
   maxLength?: number;
   inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
   defaultValue?: string | number;
@@ -413,6 +419,7 @@ function Field({
         type={type}
         step={step}
         min={min}
+        max={max}
         maxLength={maxLength}
         inputMode={inputMode}
         {...(isControlled ? { value } : { defaultValue: defaultValue ?? "" })}

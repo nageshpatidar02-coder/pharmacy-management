@@ -21,11 +21,12 @@ export default async function EditSalePage({ params }: { params: Promise<{ id: s
         name: true,
         itemType: true,
         sellingPrice: true,
+        purchasePrice: true,
         packSize: true,
         unit: true,
         batches: {
           where: { OR: [{ quantity: { gt: 0 }, expiryDate: { gt: new Date() } }, { id: { in: batchIds } }], pharmacyId: user.pharmacyId },
-          select: { id: true, batchNumber: true, quantity: true, sellingPrice: true, mrp: true, expiryDate: true },
+          select: { id: true, batchNumber: true, quantity: true, sellingPrice: true, mrp: true, purchasePrice: true, expiryDate: true },
         },
       },
       orderBy: { name: "asc" },

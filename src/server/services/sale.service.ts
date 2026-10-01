@@ -3,6 +3,20 @@ import { runMongoTransaction } from "@/server/db/prisma";
 import { requirePharmacy } from "@/server/auth/auth";
 import { saleSchema } from "@/lib/validations/sale";
 function unitsPerPack(packSize: string | null | undefined) { const match = packSize?.match(/\d+/); return match ? Math.max(1, Number(match[0])) : 1; }
+function roundMoney(value: number) { return Math.round((value + Number.EPSILON) * 100) / 100; }
+function floorMoney(value: number) { return Math.floor((value + Number.EPSILON) * 100) / 100; }
+function enforceNoLoss(item: { quantity: number; sellingPrice: number; discount: number }, batch: { purchasePrice: number }, medicine: { itemType: string; packSize: string | null }) {
+  const packMultiplier = medicine.itemType === "TABLET" || medicine.itemType === "CAPSULE" ? unitsPerPack(medicine.packSize) : 1;
+  const purchasePricePerUnit = batch.purchasePrice / packMultiplier;
+  if (item.sellingPrice + 0.000001 < purchasePricePerUnit) {
+    throw new Error(`Selling price cannot be less than purchase price (₹${roundMoney(purchasePricePerUnit).toFixed(2)}).`);
+  }
+  const maxDiscount = floorMoney(Math.max(0, item.quantity * (item.sellingPrice - purchasePricePerUnit)));
+  if (item.discount > maxDiscount + 0.001) {
+    throw new Error(`Discount cannot exceed profit margin. Maximum allowed discount is ₹${maxDiscount.toFixed(2)}.`);
+  }
+}
+
 export async function createSale(input: unknown) {
   const { pharmacyId } = await requirePharmacy();
   const data = saleSchema.parse(input);
@@ -18,6 +32,7 @@ export async function createSale(input: unknown) {
       const medicine = medicines.find((entry) => entry.id === item.medicineId);
       const batch = batchById.get(item.batchId);
       if (!medicine || !batch || batch.medicineId !== item.medicineId) throw new Error("Medicine or batch is invalid.");
+      enforceNoLoss(item, batch, medicine);
       const availableStock = batch.quantity + batch.freeQuantity;
       if (availableStock < item.quantity) throw new Error(`Insufficient stock for ${medicine.name}.`);
       const regularUsed = Math.min(batch.quantity, item.quantity);
@@ -30,7 +45,7 @@ export async function createSale(input: unknown) {
       rows.push({ item, batch, lineTotal, nextQuantity: batch.quantity - regularUsed, nextFreeQuantity: batch.freeQuantity - freeUsed });
       batchById.set(batch.id, { ...batch, quantity: batch.quantity - regularUsed, freeQuantity: batch.freeQuantity - freeUsed });
     }
-    const grandTotal = Math.round(Math.max(subtotal - discount, 0));
+    const grandTotal = roundMoney(Math.max(subtotal - discount, 0));
     if (data.paidAmount > grandTotal) throw new Error("Paid amount cannot exceed bill total.");
     const sale = await tx.sale.create({ data: { pharmacyId, customerId: data.customerId || null, invoiceNumber: data.invoiceNumber, subtotal, discount, grandTotal, paidAmount: data.paidAmount, balanceAmount: grandTotal - data.paidAmount, costAmount, paymentMethod: data.paidAmount > 0 ? data.paymentMethod : "CREDIT" } });
     for (const row of rows) { const previousTotal = row.batch.quantity + row.batch.freeQuantity; const nextTotal = row.nextQuantity + row.nextFreeQuantity; await tx.batch.update({ where: { id: row.batch.id }, data: { quantity: row.nextQuantity, freeQuantity: row.nextFreeQuantity } }); await tx.saleItem.create({ data: { saleId: sale.id, medicineId: row.item.medicineId, batchId: row.batch.id, quantity: row.item.quantity, sellingPrice: row.item.sellingPrice, costPrice: row.batch.purchasePrice, discount: row.item.discount, lineTotal: row.lineTotal } }); await tx.stockLedger.create({ data: { pharmacyId, medicineId: row.item.medicineId, batchId: row.batch.id, previousQuantity: previousTotal, quantityChange: -row.item.quantity, newQuantity: nextTotal, reason: "SALE", reference: sale.id } }); }
@@ -84,6 +99,7 @@ export async function updateSale(saleId: string, input: unknown) {
       const medicine = medicines.find((entry) => entry.id === item.medicineId);
       const batch = currentBatchById.get(item.batchId);
       if (!medicine || !batch || batch.medicineId !== item.medicineId) throw new Error("Medicine or batch is invalid.");
+      enforceNoLoss(item, batch, medicine);
       const availableStock = batch.quantity + batch.freeQuantity;
       if (availableStock < item.quantity) throw new Error(`Insufficient stock for ${medicine.name}.`);
       const regularUsed = Math.min(batch.quantity, item.quantity);
@@ -96,7 +112,7 @@ export async function updateSale(saleId: string, input: unknown) {
       rows.push({ item, batch, lineTotal, nextQuantity: batch.quantity - regularUsed, nextFreeQuantity: batch.freeQuantity - freeUsed });
       currentBatchById.set(batch.id, { ...batch, quantity: batch.quantity - regularUsed, freeQuantity: batch.freeQuantity - freeUsed });
     }
-    const grandTotal = Math.round(Math.max(subtotal - discount, 0));
+    const grandTotal = roundMoney(Math.max(subtotal - discount, 0));
     if (sale.paidAmount > grandTotal) throw new Error("Bill total cannot be less than payments already received.");
 
     await tx.sale.update({ where: { id: sale.id }, data: { customerId: data.customerId || null, invoiceNumber: data.invoiceNumber, subtotal, discount, grandTotal, balanceAmount: grandTotal - sale.paidAmount, costAmount, paymentMethod: data.paymentMethod } });
