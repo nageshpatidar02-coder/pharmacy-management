@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { purchaseSchema } from "@/lib/validations/purchase";
 import { SearchableSelect } from "@/components/shared/searchable-select";
-import { Toast } from "@/components/ui/toast";
 
 // 1. Medicine Type/Category added to prevent Syrup shown as Tablet
 export type MedicineCategory = "TABLET" | "CAPSULE" | "SYRUP" | "INJECTION" | "DROPS" | "OINTMENT" | "EQUIPMENT" | "OTHER";
@@ -34,7 +33,6 @@ type PurchaseLine = {
   purchaseRate: number; 
   mrp: number; 
   sellingPrice: number; 
-  priceWarning?: string;
   discount: number; 
   gstPercentage: number; 
 };
@@ -84,10 +82,6 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines, initialDa
   const [lines, setLines] = useState<PurchaseLine[]>(() => initialData?.items.map((line) => ({
     ...line,
     expiryDate: formatExpiryMonthYear(line.expiryDate),
-    sellingPrice: Math.max(line.sellingPrice, line.purchaseRate),
-    priceWarning: line.sellingPrice < line.purchaseRate
-      ? `Selling price was below purchase rate and has been adjusted to ₹${line.purchaseRate.toFixed(2)}.`
-      : undefined,
   })) ?? [emptyLine()]);
   const [supplierId, setSupplierId] = useState(initialData?.supplierId ?? "");
   const [invoiceNumber, setInvoiceNumber] = useState(initialData?.invoiceNumber ?? "");
@@ -100,7 +94,6 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines, initialDa
   const [igst, setIgst] = useState(initialData?.igst ?? 0);
   const [barcode, setBarcode] = useState("");
   const [error, setError] = useState("");
-  const [toastMessage, setToastMessage] = useState("");
   const [pending, setPending] = useState(false);
 
   // Totals Calculation
@@ -118,8 +111,6 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines, initialDa
 
   const maxDiscountValue = discountType === "PERCENTAGE" ? 100 : totals.taxable;
   const effectiveDiscountValue = Math.min(Math.max(discountValue, 0), maxDiscountValue);
-  const requestedBillDiscount = discountType === "PERCENTAGE" ? totals.taxable * discountValue / 100 : discountValue;
-  const hasInvalidNetTotal = !Number.isFinite(requestedBillDiscount) || totals.taxable - requestedBillDiscount < -0.005;
   const billDiscount = discountType === "PERCENTAGE" ? totals.taxable * effectiveDiscountValue / 100 : effectiveDiscountValue;
   const taxTotal = igst > 0 ? igst : totals.tax;
   const grandTotal = Math.round(Math.max(totals.taxable - billDiscount, 0) + taxTotal);
@@ -131,11 +122,7 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines, initialDa
     const currentLine = lines[index];
     if (!currentLine) return;
     const updated = { ...currentLine, ...patch };
-    if (updated.sellingPrice < updated.purchaseRate) {
-      setToastMessage(`Selling price cannot be less than purchase price (₹${updated.purchaseRate.toFixed(2)}). It was adjusted to the purchase price.`);
-      updated.sellingPrice = updated.purchaseRate;
-      updated.priceWarning = `Selling price was below purchase rate and has been adjusted to ₹${updated.purchaseRate.toFixed(2)}.`;
-    } else if (patch.sellingPrice !== undefined || patch.purchaseRate !== undefined) {
+    if (patch.sellingPrice !== undefined || patch.purchaseRate !== undefined) {
       updated.priceWarning = undefined;
     }
     setLines((current) => current.map((line, lineIndex) => lineIndex === index ? updated : line));
@@ -309,7 +296,7 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines, initialDa
                 <Field label="Purchase Rate" value={line.purchaseRate} onChange={(value) => updateLine(index, { purchaseRate: Math.max(0, Number(value) || 0) })} type="number" step="0.01" required />
                 <Field label="MRP" value={line.mrp} onChange={(value) => updateLine(index, { mrp: Math.max(0, Number(value) || 0) })} type="number" step="0.01" required />
                 <div>
-                  <Field label="Selling Price" value={line.sellingPrice} onChange={(value) => updateLine(index, { sellingPrice: Math.max(0, Number(value) || 0) })} type="number" step="0.01" min={String(line.purchaseRate)} required />
+                  <Field label="Selling Price" value={line.sellingPrice} onChange={(value) => updateLine(index, { sellingPrice: Math.max(0, Number(value) || 0) })} type="number" step="0.01" min="0" required />
                   {line.priceWarning ? <p role="status" className="mt-1 text-xs text-amber-700">{line.priceWarning}</p> : null}
                 </div>
                 <Field label="Discount (Rs)" value={Math.min(line.discount, line.quantity * line.purchaseRate)} onChange={(value) => updateLine(index, { discount: Math.min(line.quantity * line.purchaseRate, Math.max(0, Number(value) || 0)) })} type="number" min="0" max={line.quantity * line.purchaseRate} />
@@ -385,12 +372,11 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines, initialDa
         </div>
       </div>
 
-      <Button disabled={pending || hasInvalidNetTotal} className="w-full md:w-auto h-12 text-base px-8">
+      <Button disabled={pending} className="w-full md:w-auto h-12 text-base px-8">
         {pending ? "Saving Purchase & Updating Stock..." : initialData ? "Save Purchase Changes" : "Save Purchase Bill"}
       </Button>
 
       {error && <p role="alert" className="text-sm text-red-600 font-medium">{error}</p>}
-      {toastMessage ? <Toast message={toastMessage} onDismiss={() => setToastMessage("")} /> : null}
     </form>
   );
 }
