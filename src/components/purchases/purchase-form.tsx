@@ -123,7 +123,7 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines, initialDa
     if (!currentLine) return;
     const updated = { ...currentLine, ...patch };
     if (patch.sellingPrice !== undefined || patch.purchaseRate !== undefined) {
-      updated.priceWarning = undefined;
+     
     }
     setLines((current) => current.map((line, lineIndex) => lineIndex === index ? updated : line));
   }
@@ -297,7 +297,6 @@ export function PurchaseForm({ suppliers, medicines: initialMedicines, initialDa
                 <Field label="MRP" value={line.mrp} onChange={(value) => updateLine(index, { mrp: Math.max(0, Number(value) || 0) })} type="number" step="0.01" required />
                 <div>
                   <Field label="Selling Price" value={line.sellingPrice} onChange={(value) => updateLine(index, { sellingPrice: Math.max(0, Number(value) || 0) })} type="number" step="0.01" min="0" required />
-                  {line.priceWarning ? <p role="status" className="mt-1 text-xs text-amber-700">{line.priceWarning}</p> : null}
                 </div>
                 <Field label="Discount (Rs)" value={Math.min(line.discount, line.quantity * line.purchaseRate)} onChange={(value) => updateLine(index, { discount: Math.min(line.quantity * line.purchaseRate, Math.max(0, Number(value) || 0)) })} type="number" min="0" max={line.quantity * line.purchaseRate} />
                 <Field label="GST %" value={line.gstPercentage} onChange={(value) => updateLine(index, { gstPercentage: Math.min(100, Math.max(0, Number(value) || 0)) })} type="number" />
